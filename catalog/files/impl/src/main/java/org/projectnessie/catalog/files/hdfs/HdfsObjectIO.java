@@ -28,11 +28,17 @@ import java.util.Map;
 import java.util.function.BiConsumer;
 import java.util.function.BooleanSupplier;
 import org.apache.hadoop.fs.FileSystem;
+import org.apache.hadoop.fs.Path;
 import org.projectnessie.catalog.files.api.ObjectIO;
 import org.projectnessie.catalog.files.api.StorageLocations;
 import org.projectnessie.storage.uri.StorageUri;
 
 public class HdfsObjectIO implements ObjectIO {
+  private final FileSystem fileSystem;
+
+  public HdfsObjectIO(FileSystem fileSystem) {
+    this.fileSystem = fileSystem;
+  }
   @Override
   public void ping(StorageUri uri) throws IOException {
     Path path = filePath(uri);
@@ -43,7 +49,11 @@ public class HdfsObjectIO implements ObjectIO {
 
   @Override
   public InputStream readObject(StorageUri uri) throws IOException {
-    return Files.newInputStream(filePath(uri));
+    Path path = new Path(uri.requiredPath());
+    if (!fileSystem.exists(path)) {
+      throw new FileNotFoundException(path.toString());
+    }
+    return fileSystem.open(path);
   }
 
   @Override
@@ -97,7 +107,7 @@ public class HdfsObjectIO implements ObjectIO {
       Map<String, String> icebergConfig,
       BiConsumer<String, String> properties) {}
 
-  private static Path filePath(StorageUri uri) {
-    return Paths.get(uri.requiredPath());
+  private static org.apache.hadoop.fs.Path hdfsPath(StorageUri uri) {
+    return new org.apache.hadoop.fs.Path(uri.requiredPath());
   }
 }
