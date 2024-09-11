@@ -33,6 +33,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.projectnessie.catalog.files.adls.AdlsObjectIO;
 import org.projectnessie.catalog.files.gcs.GcsObjectIO;
+import org.projectnessie.catalog.files.hdfs.HdfsObjectIO;
 import org.projectnessie.catalog.files.s3.S3ObjectIO;
 import org.projectnessie.storage.uri.StorageUri;
 
@@ -43,12 +44,13 @@ public class TestResolvingObjectIO {
   @Mock protected S3ObjectIO s3ObjectIO;
   @Mock protected AdlsObjectIO adlsObjectIO;
   @Mock protected GcsObjectIO gcsObjectIO;
+  @Mock protected HdfsObjectIO hdfsObjectIO;
 
   protected ResolvingObjectIO resolvingObjectIO;
 
   @BeforeEach
   protected void setup() {
-    resolvingObjectIO = new ResolvingObjectIO(s3ObjectIO, gcsObjectIO, adlsObjectIO);
+    resolvingObjectIO = new ResolvingObjectIO(s3ObjectIO, gcsObjectIO, adlsObjectIO, hdfsObjectIO);
   }
 
   @Test

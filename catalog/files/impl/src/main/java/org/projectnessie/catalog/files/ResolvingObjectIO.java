@@ -25,6 +25,7 @@ import org.projectnessie.catalog.files.adls.AdlsObjectIO;
 import org.projectnessie.catalog.files.api.ObjectIO;
 import org.projectnessie.catalog.files.gcs.GcsObjectIO;
 import org.projectnessie.catalog.files.gcs.GcsStorageSupplier;
+import org.projectnessie.catalog.files.hdfs.HdfsObjectIO;
 import org.projectnessie.catalog.files.s3.S3ClientSupplier;
 import org.projectnessie.catalog.files.s3.S3CredentialsResolver;
 import org.projectnessie.catalog.files.s3.S3ObjectIO;
@@ -34,6 +35,7 @@ public class ResolvingObjectIO extends DelegatingObjectIO {
   private final S3ObjectIO s3ObjectIO;
   private final GcsObjectIO gcsObjectIO;
   private final AdlsObjectIO adlsObjectIO;
+  private final HdfsObjectIO hdfsObjectIO;
 
   public ResolvingObjectIO(
       S3ClientSupplier s3ClientSupplier,
@@ -43,14 +45,19 @@ public class ResolvingObjectIO extends DelegatingObjectIO {
     this(
         new S3ObjectIO(s3ClientSupplier, s3CredentialsResolver),
         new GcsObjectIO(gcsStorageSupplier),
-        new AdlsObjectIO(adlsClientSupplier));
+        new AdlsObjectIO(adlsClientSupplier),
+        new HdfsObjectIO());
   }
 
   public ResolvingObjectIO(
-      S3ObjectIO s3ObjectIO, GcsObjectIO gcsObjectIO, AdlsObjectIO adlsObjectIO) {
+      S3ObjectIO s3ObjectIO,
+      GcsObjectIO gcsObjectIO,
+      AdlsObjectIO adlsObjectIO,
+      HdfsObjectIO hdfsObjectIO) {
     this.s3ObjectIO = s3ObjectIO;
     this.gcsObjectIO = gcsObjectIO;
     this.adlsObjectIO = adlsObjectIO;
+    this.hdfsObjectIO = hdfsObjectIO;
   }
 
   @Override
@@ -69,6 +76,8 @@ public class ResolvingObjectIO extends DelegatingObjectIO {
       case "abfs":
       case "abfss":
         return adlsObjectIO;
+      case "hdfs":
+        return hdfsObjectIO;
       default:
         throw new IllegalArgumentException("Unknown or unsupported scheme: " + scheme);
     }

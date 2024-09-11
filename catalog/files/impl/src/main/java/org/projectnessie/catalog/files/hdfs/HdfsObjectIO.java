@@ -13,58 +13,68 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.projectnessie.catalog.files.local;
+package org.projectnessie.catalog.files.hdfs;
 
+import java.io.BufferedInputStream;
+import java.io.BufferedOutputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.nio.file.FileSystemNotFoundException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.List;
 import java.util.Map;
 import java.util.function.BiConsumer;
 import java.util.function.BooleanSupplier;
+import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
+import org.immutables.value.Value;
 import org.projectnessie.catalog.files.api.ObjectIO;
 import org.projectnessie.catalog.files.api.StorageLocations;
 import org.projectnessie.storage.uri.StorageUri;
 
 public class HdfsObjectIO implements ObjectIO {
-  private final FileSystem fileSystem;
-
-  public HdfsObjectIO(FileSystem fileSystem) {
-    this.fileSystem = fileSystem;
+  @Value.Default
+  Configuration hadoopConfiguration() {
+    return new Configuration();
   }
+
+  private Path filePath(StorageUri uri) {
+    return new Path(uri.location());
+  }
+
+  private FileSystem fileSystem(StorageUri uri) throws IOException {
+    Path path = filePath(uri);
+    return path.getFileSystem(hadoopConfiguration());
+  }
+
   @Override
   public void ping(StorageUri uri) throws IOException {
     Path path = filePath(uri);
-    if (!Files.isDirectory(path)) {
-      throw new FileNotFoundException(path.toString());
+
+    try (FileSystem fs = fileSystem(uri)) {
+      if (!fs.exists(path)) {
+        throw new FileNotFoundException(path.toString());
+      }
     }
   }
 
   @Override
   public InputStream readObject(StorageUri uri) throws IOException {
-    Path path = new Path(uri.requiredPath());
-    if (!fileSystem.exists(path)) {
-      throw new FileNotFoundException(path.toString());
+    Path path = filePath(uri);
+
+    try (FileSystem fs = fileSystem(uri)) {
+      return new BufferedInputStream(fs.open(path));
     }
-    return fileSystem.open(path);
   }
 
   @Override
   public OutputStream writeObject(StorageUri uri) throws IOException {
-    try {
-      Path path = filePath(uri);
-      Files.createDirectories(path.getParent());
-      return Files.newOutputStream(path);
-    } catch (FileSystemNotFoundException e) {
-      throw new UnsupportedOperationException(
-          "Writing to " + uri.scheme() + " URIs is not supported", e);
+    Path path = filePath(uri);
+
+    try (FileSystem fs = fileSystem(uri)) {
+      fs.mkdirs(path.getParent());
+      return new BufferedOutputStream(fs.create(path));
     }
   }
 
@@ -72,9 +82,9 @@ public class HdfsObjectIO implements ObjectIO {
   public void deleteObjects(List<StorageUri> uris) throws IOException {
     IOException ex = null;
     for (StorageUri uri : uris) {
-      Path path = HdfsObjectIO.filePath(uri);
-      try {
-        Files.deleteIfExists(path);
+      Path path = filePath(uri);
+      try (FileSystem fs = fileSystem(uri)) {
+        fs.delete(path, true);
       } catch (IOException e) {
         if (ex == null) {
           ex = e;
@@ -106,8 +116,4 @@ public class HdfsObjectIO implements ObjectIO {
       StorageUri warehouse,
       Map<String, String> icebergConfig,
       BiConsumer<String, String> properties) {}
-
-  private static org.apache.hadoop.fs.Path hdfsPath(StorageUri uri) {
-    return new org.apache.hadoop.fs.Path(uri.requiredPath());
-  }
 }
