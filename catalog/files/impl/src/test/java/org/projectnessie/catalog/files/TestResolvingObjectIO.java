@@ -63,6 +63,8 @@ public class TestResolvingObjectIO {
         .isSameAs(adlsObjectIO);
     soft.assertThat(resolvingObjectIO.resolve(StorageUri.of("abfss://foo/bar")))
         .isSameAs(adlsObjectIO);
+    soft.assertThat(resolvingObjectIO.resolve(StorageUri.of("hdfs://foo/bar")))
+        .isSameAs(hdfsObjectIO);
     soft.assertThatIllegalArgumentException()
         .isThrownBy(() -> resolvingObjectIO.resolve(StorageUri.of("http://foo/bar")));
   }
@@ -79,6 +81,7 @@ public class TestResolvingObjectIO {
     verifyNoMoreInteractions(s3ObjectIO);
     verifyNoInteractions(gcsObjectIO);
     verifyNoInteractions(adlsObjectIO);
+    verifyNoInteractions(hdfsObjectIO);
   }
 
   @Test
@@ -92,6 +95,7 @@ public class TestResolvingObjectIO {
     verifyNoMoreInteractions(s3ObjectIO);
     verifyNoInteractions(gcsObjectIO);
     verifyNoInteractions(adlsObjectIO);
+    verifyNoInteractions(hdfsObjectIO);
   }
 
   @Test
@@ -107,6 +111,7 @@ public class TestResolvingObjectIO {
     verifyNoMoreInteractions(s3ObjectIO);
     verifyNoInteractions(gcsObjectIO);
     verifyNoInteractions(adlsObjectIO);
+    verifyNoInteractions(hdfsObjectIO);
   }
 
   @Test
@@ -127,5 +132,6 @@ public class TestResolvingObjectIO {
     verifyNoMoreInteractions(s3ObjectIO);
     verifyNoMoreInteractions(gcsObjectIO);
     verifyNoMoreInteractions(adlsObjectIO);
+    verifyNoInteractions(hdfsObjectIO);
   }
 }

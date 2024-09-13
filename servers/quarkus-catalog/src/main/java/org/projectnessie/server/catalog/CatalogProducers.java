@@ -56,6 +56,7 @@ import org.projectnessie.catalog.files.config.S3Options;
 import org.projectnessie.catalog.files.gcs.GcsClients;
 import org.projectnessie.catalog.files.gcs.GcsExceptionMapper;
 import org.projectnessie.catalog.files.gcs.GcsStorageSupplier;
+import org.projectnessie.catalog.files.hdfs.HdfsClientSupplier;
 import org.projectnessie.catalog.files.s3.S3ClientSupplier;
 import org.projectnessie.catalog.files.s3.S3Clients;
 import org.projectnessie.catalog.files.s3.S3CredentialsResolver;
@@ -227,9 +228,14 @@ public class CatalogProducers {
       S3ClientSupplier s3ClientSupplier,
       S3CredentialsResolver s3CredentialsResolver,
       GcsStorageSupplier gcsStorageSupplier,
-      AdlsClientSupplier adlsClientSupplier) {
+      AdlsClientSupplier adlsClientSupplier,
+      HdfsClientSupplier hdfsClientSupplier) {
     return new ResolvingObjectIO(
-        s3ClientSupplier, s3CredentialsResolver, adlsClientSupplier, gcsStorageSupplier);
+        s3ClientSupplier,
+        s3CredentialsResolver,
+        adlsClientSupplier,
+        gcsStorageSupplier,
+        hdfsClientSupplier);
   }
 
   @Produces

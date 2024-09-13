@@ -25,18 +25,19 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.BiConsumer;
 import java.util.function.BooleanSupplier;
-import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
-import org.immutables.value.Value;
 import org.projectnessie.catalog.files.api.ObjectIO;
 import org.projectnessie.catalog.files.api.StorageLocations;
 import org.projectnessie.storage.uri.StorageUri;
 
 public class HdfsObjectIO implements ObjectIO {
-  @Value.Default
-  Configuration hadoopConfiguration() {
-    return new Configuration();
+  static final String HDFS_CONFIG_RESOURCES = "hdfs.config.resources";
+
+  private final HdfsClientSupplier clientSupplier;
+
+  public HdfsObjectIO(HdfsClientSupplier clientSupplier) {
+    this.clientSupplier = clientSupplier;
   }
 
   private Path filePath(StorageUri uri) {
@@ -45,7 +46,7 @@ public class HdfsObjectIO implements ObjectIO {
 
   private FileSystem fileSystem(StorageUri uri) throws IOException {
     Path path = filePath(uri);
-    return path.getFileSystem(hadoopConfiguration());
+    return path.getFileSystem(clientSupplier.buildClientConfiguration());
   }
 
   @Override
