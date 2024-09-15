@@ -24,6 +24,7 @@ import org.projectnessie.catalog.files.config.AdlsOptions;
 import org.projectnessie.catalog.files.config.GcsOptions;
 import org.projectnessie.catalog.files.config.S3Config;
 import org.projectnessie.catalog.files.config.S3Options;
+import org.projectnessie.catalog.files.config.HdfsOptions;
 import org.projectnessie.nessie.docgen.annotations.ConfigDocs.ConfigItem;
 import org.projectnessie.nessie.immutables.NessieImmutable;
 
@@ -51,6 +52,10 @@ public interface SmallryeConfigs {
   @WithName("service.adls")
   @ConfigItem(section = "adls", sectionDocFromType = true)
   AdlsOptions adls();
+
+  @WithName("service.hdfs")
+  @ConfigItem(section = "hdfs", sectionDocFromType = true)
+  HdfsOptions hdfs();
 
   @WithParentName
   CatalogConfig catalog();

@@ -20,6 +20,7 @@ import jakarta.inject.Singleton;
 import org.projectnessie.catalog.files.config.AdlsConfig;
 import org.projectnessie.catalog.files.config.AdlsOptions;
 import org.projectnessie.catalog.files.config.GcsOptions;
+import org.projectnessie.catalog.files.config.HdfsOptions;
 import org.projectnessie.catalog.files.config.S3Config;
 import org.projectnessie.catalog.files.config.S3Options;
 import org.projectnessie.catalog.service.config.CatalogConfig;
@@ -37,12 +38,14 @@ public class ConfigProducers {
     AdlsOptions adlsOptions = smallryeConfigs.adls().validate().validate();
     GcsOptions gcsOptions = smallryeConfigs.gcs().validate();
     S3Options s3Options = smallryeConfigs.s3().validate();
+    HdfsOptions hdfsOptions = smallryeConfigs.hdfs().validate();
 
     return ImmutableLakehouseConfig.builder()
         .catalog(catalogConfig.deepClone())
         .s3(s3Options.deepClone())
         .gcs(gcsOptions.deepClone())
         .adls(adlsOptions.deepClone())
+        .hdfs(hdfsOptions.deepClone())
         .build();
   }
 
@@ -80,6 +83,12 @@ public class ConfigProducers {
   @Singleton
   public AdlsConfig adlsConfig(SmallryeConfigs smallryeConfigs) {
     return smallryeConfigs.adlsconfig();
+  }
+
+  @Produces
+  @Singleton
+  public HdfsOptions hdfsOptions(LakehouseConfig lakehouseConfig) {
+    return lakehouseConfig.hdfs();
   }
 
   @Produces

@@ -21,6 +21,7 @@ import com.fasterxml.jackson.databind.annotation.JsonSerialize;
 import org.immutables.value.Value;
 import org.projectnessie.catalog.files.config.AdlsOptions;
 import org.projectnessie.catalog.files.config.GcsOptions;
+import org.projectnessie.catalog.files.config.HdfsOptions;
 import org.projectnessie.catalog.files.config.S3Options;
 import org.projectnessie.nessie.immutables.NessieImmutable;
 
@@ -45,6 +46,9 @@ public interface LakehouseConfig {
   // "nessie.catalog.service.adls"
   AdlsOptions adls();
 
+  // "nessie.catalog.service.hdfs"
+  HdfsOptions hdfs();
+
   @Value.NonAttribute
   @JsonIgnore
   default LakehouseConfig deepClone() {
@@ -53,6 +57,7 @@ public interface LakehouseConfig {
         .s3(s3().deepClone())
         .gcs(gcs().deepClone())
         .adls(adls().deepClone())
+        .hdfs(hdfs().deepClone())
         .build();
   }
 }

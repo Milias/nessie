@@ -33,7 +33,9 @@ public final class HdfsClientSupplier {
   Configuration buildClientConfiguration() {
     Configuration conf = new Configuration();
 
-    conf.addResource(new Path(hdfsOptions.resourcesConfig()));
+    if (hdfsOptions.resourcesConfig().isPresent()) {
+      conf.addResource(new Path(hdfsOptions.resourcesConfig().get()));
+    }
 
     return conf;
   }

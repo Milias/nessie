@@ -15,14 +15,33 @@
  */
 package org.projectnessie.catalog.files.config;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.fasterxml.jackson.databind.annotation.JsonSerialize;
+
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.stream.Collectors;
+
 import org.immutables.value.Value;
+import org.projectnessie.nessie.immutables.NessieImmutable;
 
 /** Configuration for Hadoop FileSystem (HDFS). */
-@Value.Immutable
+@NessieImmutable
 @JsonSerialize(as = ImmutableHdfsOptions.class)
 @JsonDeserialize(as = ImmutableHdfsOptions.class)
 public interface HdfsOptions {
-  String resourcesConfig();
+  Optional<String> resourcesConfig();
+
+  default HdfsOptions validate() {
+    return this;
+  }
+
+  @Value.NonAttribute
+  @JsonIgnore
+  default HdfsOptions deepClone() {
+    ImmutableHdfsOptions.Builder b = ImmutableHdfsOptions.builder().from(this);
+    return b.build();
+  }
 }
