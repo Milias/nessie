@@ -22,9 +22,9 @@ import io.smallrye.config.WithParentName;
 import org.projectnessie.catalog.files.config.AdlsConfig;
 import org.projectnessie.catalog.files.config.AdlsOptions;
 import org.projectnessie.catalog.files.config.GcsOptions;
+import org.projectnessie.catalog.files.config.HdfsOptions;
 import org.projectnessie.catalog.files.config.S3Config;
 import org.projectnessie.catalog.files.config.S3Options;
-import org.projectnessie.catalog.files.config.HdfsOptions;
 import org.projectnessie.nessie.docgen.annotations.ConfigDocs.ConfigItem;
 import org.projectnessie.nessie.immutables.NessieImmutable;
 

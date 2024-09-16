@@ -18,12 +18,7 @@ package org.projectnessie.catalog.files.config;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.fasterxml.jackson.databind.annotation.JsonSerialize;
-
-import java.util.List;
-import java.util.Map;
 import java.util.Optional;
-import java.util.stream.Collectors;
-
 import org.immutables.value.Value;
 import org.projectnessie.nessie.immutables.NessieImmutable;
 

@@ -35,7 +35,9 @@ dependencies {
 
   // hadoop-common brings Jackson in ancient versions, pulling in the Jackson BOM to avoid that
   implementation(platform(libs.jackson.bom))
-  implementation(libs.hadoop.common) {
+  implementation(libs.javax.xml.bind.jaxb)
+  implementation(libs.jackson.jaxb.annotations)
+  implementation(libs.hadoop.client) {
     exclude("javax.servlet.jsp", "jsp-api")
     exclude("javax.ws.rs", "javax.ws.rs-api")
     exclude("log4j", "log4j")

@@ -41,19 +41,18 @@ public class HdfsObjectIO implements ObjectIO {
   }
 
   private Path filePath(StorageUri uri) {
-    return new Path(uri.location());
+    return new Path(uri.requiredPath());
   }
 
-  private FileSystem fileSystem(StorageUri uri) throws IOException {
-    Path path = filePath(uri);
-    return path.getFileSystem(clientSupplier.buildClientConfiguration());
+  private FileSystem fileSystem() throws IOException {
+    return FileSystem.get(clientSupplier.buildClientConfiguration());
   }
 
   @Override
   public void ping(StorageUri uri) throws IOException {
     Path path = filePath(uri);
 
-    try (FileSystem fs = fileSystem(uri)) {
+    try (FileSystem fs = fileSystem()) {
       if (!fs.exists(path)) {
         throw new FileNotFoundException(path.toString());
       }
@@ -64,7 +63,7 @@ public class HdfsObjectIO implements ObjectIO {
   public InputStream readObject(StorageUri uri) throws IOException {
     Path path = filePath(uri);
 
-    try (FileSystem fs = fileSystem(uri)) {
+    try (FileSystem fs = fileSystem()) {
       return new BufferedInputStream(fs.open(path));
     }
   }
@@ -73,7 +72,7 @@ public class HdfsObjectIO implements ObjectIO {
   public OutputStream writeObject(StorageUri uri) throws IOException {
     Path path = filePath(uri);
 
-    try (FileSystem fs = fileSystem(uri)) {
+    try (FileSystem fs = fileSystem()) {
       fs.mkdirs(path.getParent());
       return new BufferedOutputStream(fs.create(path));
     }
@@ -84,7 +83,7 @@ public class HdfsObjectIO implements ObjectIO {
     IOException ex = null;
     for (StorageUri uri : uris) {
       Path path = filePath(uri);
-      try (FileSystem fs = fileSystem(uri)) {
+      try (FileSystem fs = fileSystem()) {
         fs.delete(path, true);
       } catch (IOException e) {
         if (ex == null) {
