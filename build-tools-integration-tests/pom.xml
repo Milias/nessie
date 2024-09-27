@@ -27,7 +27,7 @@
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <maven.compiler.release>8</maven.compiler.release>
     <versionMavenResolver>1.9.22</versionMavenResolver>
-    <nessie.version>0.96.1</nessie.version>
+    <nessie.version>0.99.0</nessie.version>
   </properties>
 
   <dependencyManagement>
@@ -42,7 +42,7 @@
       <dependency>
         <groupId>org.junit</groupId>
         <artifactId>junit-bom</artifactId>
-        <version>5.11.0</version>
+        <version>5.11.1</version>
         <type>pom</type>
         <scope>import</scope>
       </dependency>

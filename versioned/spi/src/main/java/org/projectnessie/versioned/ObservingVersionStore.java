@@ -29,6 +29,7 @@ import java.util.function.BiConsumer;
 import org.projectnessie.model.CommitMeta;
 import org.projectnessie.model.ContentKey;
 import org.projectnessie.model.IdentifiedContentKey;
+import org.projectnessie.model.Operation;
 import org.projectnessie.model.RepositoryConfig;
 import org.projectnessie.versioned.paging.PaginationIterator;
 
@@ -80,12 +81,12 @@ public class ObservingVersionStore implements VersionStore {
   @Override
   @Counted(PREFIX)
   @Timed(value = PREFIX, histogram = true)
-  public CommitResult<Commit> commit(
+  public CommitResult commit(
       @SpanAttribute(TAG_BRANCH) @Nonnull BranchName branch,
       @SpanAttribute(TAG_HASH) @Nonnull Optional<Hash> referenceHash,
       @Nonnull CommitMeta metadata,
       @Nonnull List<Operation> operations,
-      @Nonnull VersionStore.CommitValidator validator,
+      @Nonnull CommitValidator validator,
       @Nonnull BiConsumer<ContentKey, String> addedContents)
       throws ReferenceNotFoundException, ReferenceConflictException {
     return delegate.commit(branch, referenceHash, metadata, operations, validator, addedContents);
@@ -95,7 +96,7 @@ public class ObservingVersionStore implements VersionStore {
   @Override
   @Counted(PREFIX)
   @Timed(value = PREFIX, histogram = true)
-  public MergeResult<Commit> transplant(TransplantOp transplantOp)
+  public TransplantResult transplant(TransplantOp transplantOp)
       throws ReferenceNotFoundException, ReferenceConflictException {
     return delegate.transplant(transplantOp);
   }
@@ -104,7 +105,7 @@ public class ObservingVersionStore implements VersionStore {
   @Override
   @Counted(PREFIX)
   @Timed(value = PREFIX, histogram = true)
-  public MergeResult<Commit> merge(MergeOp mergeOp)
+  public MergeResult merge(MergeOp mergeOp)
       throws ReferenceNotFoundException, ReferenceConflictException {
     return delegate.merge(mergeOp);
   }

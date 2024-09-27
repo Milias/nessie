@@ -41,9 +41,9 @@ import static org.projectnessie.services.cel.CELUtil.VAR_REF;
 import static org.projectnessie.services.cel.CELUtil.VAR_REF_META;
 import static org.projectnessie.services.cel.CELUtil.VAR_REF_TYPE;
 import static org.projectnessie.services.impl.RefUtil.toNamedRef;
+import static org.projectnessie.versioned.RequestMeta.API_WRITE;
 
 import com.google.common.base.Strings;
-import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import jakarta.annotation.Nullable;
 import java.util.ArrayList;
@@ -56,7 +56,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
-import java.util.function.BiConsumer;
 import java.util.function.BiPredicate;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -89,6 +88,8 @@ import org.projectnessie.model.MergeKeyBehavior;
 import org.projectnessie.model.MergeResponse;
 import org.projectnessie.model.MergeResponse.ContentKeyConflict;
 import org.projectnessie.model.Operation;
+import org.projectnessie.model.Operation.Delete;
+import org.projectnessie.model.Operation.Put;
 import org.projectnessie.model.Operations;
 import org.projectnessie.model.Reference;
 import org.projectnessie.model.Reference.ReferenceType;
@@ -98,6 +99,7 @@ import org.projectnessie.model.ReferenceMetadata;
 import org.projectnessie.model.Tag;
 import org.projectnessie.model.Validation;
 import org.projectnessie.services.authz.AccessContext;
+import org.projectnessie.services.authz.ApiContext;
 import org.projectnessie.services.authz.Authorizer;
 import org.projectnessie.services.authz.AuthzPaginationIterator;
 import org.projectnessie.services.authz.BatchAccessChecker;
@@ -111,22 +113,22 @@ import org.projectnessie.services.spi.PagedResponseHandler;
 import org.projectnessie.services.spi.TreeService;
 import org.projectnessie.versioned.BranchName;
 import org.projectnessie.versioned.Commit;
-import org.projectnessie.versioned.Delete;
 import org.projectnessie.versioned.GetNamedRefsParams;
 import org.projectnessie.versioned.GetNamedRefsParams.RetrieveOptions;
 import org.projectnessie.versioned.Hash;
 import org.projectnessie.versioned.KeyEntry;
 import org.projectnessie.versioned.MergeConflictException;
 import org.projectnessie.versioned.MergeResult;
+import org.projectnessie.versioned.MergeTransplantResultBase;
 import org.projectnessie.versioned.NamedRef;
-import org.projectnessie.versioned.Put;
 import org.projectnessie.versioned.ReferenceAlreadyExistsException;
 import org.projectnessie.versioned.ReferenceConflictException;
 import org.projectnessie.versioned.ReferenceHistory;
 import org.projectnessie.versioned.ReferenceInfo;
 import org.projectnessie.versioned.ReferenceNotFoundException;
+import org.projectnessie.versioned.RequestMeta;
 import org.projectnessie.versioned.TagName;
-import org.projectnessie.versioned.Unchanged;
+import org.projectnessie.versioned.TransplantResult;
 import org.projectnessie.versioned.VersionStore;
 import org.projectnessie.versioned.VersionStore.CommitValidator;
 import org.projectnessie.versioned.VersionStore.MergeOp;
@@ -137,8 +139,12 @@ import org.projectnessie.versioned.paging.PaginationIterator;
 public class TreeApiImpl extends BaseApiImpl implements TreeService {
 
   public TreeApiImpl(
-      ServerConfig config, VersionStore store, Authorizer authorizer, AccessContext accessContext) {
-    super(config, store, authorizer, accessContext);
+      ServerConfig config,
+      VersionStore store,
+      Authorizer authorizer,
+      AccessContext accessContext,
+      ApiContext apiContext) {
+    super(config, store, authorizer, accessContext, apiContext);
   }
 
   @Override
@@ -567,7 +573,7 @@ public class TreeApiImpl extends BaseApiImpl implements TreeService {
                 op -> {
                   ContentKey key = op.getKey();
                   if (op instanceof Put) {
-                    Content content = ((Put) op).getValue();
+                    Content content = ((Put) op).getContent();
                     logEntry.addOperations(Operation.Put.of(key, content));
                   }
                   if (op instanceof Delete) {
@@ -674,7 +680,7 @@ public class TreeApiImpl extends BaseApiImpl implements TreeService {
         commitMeta = null;
       }
 
-      MergeResult<Commit> result =
+      TransplantResult result =
           getStore()
               .transplant(
                   TransplantOp.builder()
@@ -697,16 +703,14 @@ public class TreeApiImpl extends BaseApiImpl implements TreeService {
                       .defaultMergeBehavior(defaultMergeBehavior(defaultMergeBehavior))
                       .dryRun(Boolean.TRUE.equals(dryRun))
                       .fetchAdditionalInfo(Boolean.TRUE.equals(fetchAdditionalInfo))
-                      .validator(createCommitValidator((BranchName) toRef.getNamedRef()))
+                      .validator(createCommitValidator((BranchName) toRef.getNamedRef(), API_WRITE))
                       .build());
-      return createResponse(fetchAdditionalInfo, result);
+      return createResponse(result);
     } catch (ReferenceNotFoundException e) {
       throw new NessieReferenceNotFoundException(e.getMessage(), e);
     } catch (MergeConflictException e) {
       if (Boolean.TRUE.equals(returnConflictAsResult)) {
-        @SuppressWarnings("unchecked")
-        MergeResult<Commit> mr = (MergeResult<Commit>) e.getMergeResult();
-        return createResponse(fetchAdditionalInfo, mr);
+        return createResponse(e.getMergeResult());
       }
       throw new NessieReferenceConflictException(e.getReferenceConflicts(), e.getMessage(), e);
     } catch (ReferenceConflictException e) {
@@ -750,7 +754,7 @@ public class TreeApiImpl extends BaseApiImpl implements TreeService {
           .canCommitChangeAgainstReference(toRef.getNamedRef())
           .checkAndThrow();
 
-      MergeResult<Commit> result =
+      MergeResult result =
           getStore()
               .merge(
                   MergeOp.builder()
@@ -773,16 +777,14 @@ public class TreeApiImpl extends BaseApiImpl implements TreeService {
                       .defaultMergeBehavior(defaultMergeBehavior(defaultMergeBehavior))
                       .dryRun(Boolean.TRUE.equals(dryRun))
                       .fetchAdditionalInfo(Boolean.TRUE.equals(fetchAdditionalInfo))
-                      .validator(createCommitValidator((BranchName) toRef.getNamedRef()))
+                      .validator(createCommitValidator((BranchName) toRef.getNamedRef(), API_WRITE))
                       .build());
-      return createResponse(fetchAdditionalInfo, result);
+      return createResponse(result);
     } catch (ReferenceNotFoundException e) {
       throw new NessieReferenceNotFoundException(e.getMessage(), e);
     } catch (MergeConflictException e) {
       if (Boolean.TRUE.equals(returnConflictAsResult)) {
-        @SuppressWarnings("unchecked")
-        MergeResult<Commit> mr = (MergeResult<Commit>) e.getMergeResult();
-        return createResponse(fetchAdditionalInfo, mr);
+        return createResponse(e.getMergeResult());
       }
       throw new NessieReferenceConflictException(e.getReferenceConflicts(), e.getMessage(), e);
     } catch (ReferenceConflictException e) {
@@ -809,7 +811,7 @@ public class TreeApiImpl extends BaseApiImpl implements TreeService {
   }
 
   @SuppressWarnings("deprecation")
-  private MergeResponse createResponse(Boolean fetchAdditionalInfo, MergeResult<Commit> result) {
+  private MergeResponse createResponse(MergeTransplantResultBase result) {
     Function<Hash, String> hashToString = h -> h != null ? h.asString() : null;
     ImmutableMergeResponse.Builder response =
         ImmutableMergeResponse.builder()
@@ -821,27 +823,6 @@ public class TreeApiImpl extends BaseApiImpl implements TreeService {
             .wasApplied(result.wasApplied())
             .wasSuccessful(result.wasSuccessful());
 
-    BiConsumer<List<Commit>, Consumer<LogEntry>> convertCommits =
-        (src, dest) -> {
-          if (src == null) {
-            return;
-          }
-          src.stream()
-              .map(c -> commitToLogEntry(Boolean.TRUE.equals(fetchAdditionalInfo), c))
-              .forEach(dest);
-        };
-
-    convertCommits.accept(result.getSourceCommits(), response::addSourceCommits);
-    convertCommits.accept(result.getTargetCommits(), response::addTargetCommits);
-
-    BiConsumer<List<Hash>, Consumer<String>> convertCommitIds =
-        (src, dest) -> {
-          if (src == null) {
-            return;
-          }
-          src.stream().map(hashToString).forEach(dest);
-        };
-
     result
         .getDetails()
         .forEach(
@@ -849,12 +830,12 @@ public class TreeApiImpl extends BaseApiImpl implements TreeService {
               ImmutableContentKeyDetails.Builder keyDetails =
                   ImmutableContentKeyDetails.builder()
                       .key(ContentKey.of(key.getElements()))
-                      .conflictType(ContentKeyConflict.valueOf(details.getConflictType().name()))
+                      .conflictType(
+                          details.getConflict() != null
+                              ? ContentKeyConflict.UNRESOLVABLE
+                              : ContentKeyConflict.NONE)
                       .mergeBehavior(MergeBehavior.valueOf(details.getMergeBehavior().name()))
                       .conflict(details.getConflict());
-
-              convertCommitIds.accept(details.getSourceCommits(), keyDetails::addSourceCommits);
-              convertCommitIds.accept(details.getTargetCommits(), keyDetails::addTargetCommits);
 
               response.addDetails(keyDetails.build());
             });
@@ -1044,16 +1025,11 @@ public class TreeApiImpl extends BaseApiImpl implements TreeService {
 
   @Override
   public CommitResponse commitMultipleOperations(
-      String branch, String expectedHash, Operations operations)
+      String branch, String expectedHash, Operations operations, RequestMeta requestMeta)
       throws NessieNotFoundException, NessieConflictException {
 
     CommitMeta commitMeta = operations.getCommitMeta();
     validateCommitMeta(commitMeta);
-
-    List<org.projectnessie.versioned.Operation> ops =
-        operations.getOperations().stream()
-            .map(TreeApiImpl::toOp)
-            .collect(ImmutableList.toImmutableList());
 
     try {
       ImmutableCommitResponse.Builder commitResponse = ImmutableCommitResponse.builder();
@@ -1073,8 +1049,8 @@ public class TreeApiImpl extends BaseApiImpl implements TreeService {
                   (BranchName) toRef.getNamedRef(),
                   Optional.of(toRef.getHash()),
                   commitMetaUpdate(null, numCommits -> null).rewriteSingle(commitMeta),
-                  ops,
-                  createCommitValidator((BranchName) toRef.getNamedRef()),
+                  operations.getOperations(),
+                  createCommitValidator((BranchName) toRef.getNamedRef(), requestMeta),
                   (key, cid) -> commitResponse.addAddedContents(addedContent(key, cid)))
               .getCommitHash();
 
@@ -1086,14 +1062,15 @@ public class TreeApiImpl extends BaseApiImpl implements TreeService {
     }
   }
 
-  private CommitValidator createCommitValidator(BranchName branchName) {
+  private CommitValidator createCommitValidator(BranchName branchName, RequestMeta requestMeta) {
     // Commits routinely run retries due to collisions on updating the HEAD of the branch.
     // Authorization is not dependent on the commit history, only on the collection of access
     // checks, which reflect the current commit. On retries, the commit data relevant to access
     // checks almost never changes. Therefore, we use RetriableAccessChecker to avoid re-validating
     // access checks (which could be a time-consuming operation) on subsequent retries, unless
     // authorization input data changes.
-    RetriableAccessChecker accessChecker = new RetriableAccessChecker(this::startAccessCheck);
+    RetriableAccessChecker accessChecker =
+        new RetriableAccessChecker(this::startAccessCheck, getApiContext());
     return validation -> {
       BatchAccessChecker check = accessChecker.newAttempt();
       check.canCommitChangeAgainstReference(branchName);
@@ -1101,15 +1078,16 @@ public class TreeApiImpl extends BaseApiImpl implements TreeService {
           .operations()
           .forEach(
               op -> {
+                Set<String> keyActions = requestMeta.keyActions(op.identifiedKey().contentKey());
                 switch (op.operationType()) {
                   case CREATE:
-                    check.canCreateEntity(branchName, op.identifiedKey());
+                    check.canCreateEntity(branchName, op.identifiedKey(), keyActions);
                     break;
                   case UPDATE:
-                    check.canUpdateEntity(branchName, op.identifiedKey());
+                    check.canUpdateEntity(branchName, op.identifiedKey(), keyActions);
                     break;
                   case DELETE:
-                    check.canDeleteEntity(branchName, op.identifiedKey());
+                    check.canDeleteEntity(branchName, op.identifiedKey(), keyActions);
                     break;
                   default:
                     throw new UnsupportedOperationException(
@@ -1163,19 +1141,5 @@ public class TreeApiImpl extends BaseApiImpl implements TreeService {
       return null;
     }
     return builder.build();
-  }
-
-  protected static org.projectnessie.versioned.Operation toOp(Operation o) {
-    ContentKey key = o.getKey();
-    if (o instanceof Operation.Delete) {
-      return Delete.of(key);
-    } else if (o instanceof Operation.Put) {
-      Operation.Put put = (Operation.Put) o;
-      return Put.of(key, put.getContent());
-    } else if (o instanceof Operation.Unchanged) {
-      return Unchanged.of(key);
-    } else {
-      throw new IllegalStateException("Unknown operation " + o);
-    }
   }
 }

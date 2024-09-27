@@ -21,30 +21,38 @@ import static java.util.Objects.requireNonNull;
 import static org.projectnessie.api.v2.params.ParsedReference.parsedReference;
 import static org.projectnessie.api.v2.params.ReferenceResolver.resolveReferencePathElement;
 import static org.projectnessie.catalog.formats.iceberg.nessie.IcebergConstants.DERIVED_PROPERTIES;
+import static org.projectnessie.catalog.formats.iceberg.nessie.NessieModelIceberg.icebergNewEntityBaseLocation;
 import static org.projectnessie.catalog.formats.iceberg.nessie.NessieModelIceberg.typeToEntityName;
+import static org.projectnessie.catalog.formats.iceberg.rest.IcebergMetadataUpdate.SetLocation.setTrustedLocation;
 import static org.projectnessie.catalog.service.rest.DecodedPrefix.decodedPrefix;
 import static org.projectnessie.catalog.service.rest.NamespaceRef.namespaceRef;
 import static org.projectnessie.catalog.service.rest.TableRef.tableRef;
 import static org.projectnessie.catalog.service.rest.TimestampParser.timestampToNessie;
-import static org.projectnessie.model.CommitMeta.fromMessage;
+import static org.projectnessie.model.Content.Type.ICEBERG_TABLE;
 import static org.projectnessie.model.Namespace.Empty.EMPTY_NAMESPACE;
 import static org.projectnessie.model.Reference.ReferenceType.BRANCH;
+import static org.projectnessie.services.authz.ApiContext.apiContext;
+import static org.projectnessie.services.impl.RefUtil.toReference;
+import static org.projectnessie.versioned.RequestMeta.API_READ;
+import static org.projectnessie.versioned.RequestMeta.API_WRITE;
 
 import com.google.common.base.Splitter;
 import io.smallrye.mutiny.Uni;
-import jakarta.inject.Inject;
 import java.io.IOException;
 import java.net.URI;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.function.Consumer;
 import java.util.stream.Stream;
 import org.projectnessie.api.v2.params.ParsedReference;
 import org.projectnessie.catalog.formats.iceberg.meta.IcebergTableIdentifier;
+import org.projectnessie.catalog.formats.iceberg.nessie.CatalogOps;
 import org.projectnessie.catalog.formats.iceberg.rest.IcebergCatalogOperation;
+import org.projectnessie.catalog.formats.iceberg.rest.IcebergMetadataUpdate;
 import org.projectnessie.catalog.formats.iceberg.rest.IcebergRenameTableRequest;
 import org.projectnessie.catalog.formats.iceberg.rest.IcebergUpdateEntityRequest;
 import org.projectnessie.catalog.service.api.CatalogCommit;
@@ -52,9 +60,8 @@ import org.projectnessie.catalog.service.api.CatalogEntityAlreadyExistsException
 import org.projectnessie.catalog.service.api.CatalogService;
 import org.projectnessie.catalog.service.api.SnapshotReqParams;
 import org.projectnessie.catalog.service.api.SnapshotResponse;
-import org.projectnessie.catalog.service.config.CatalogConfig;
-import org.projectnessie.client.api.NessieApiV2;
-import org.projectnessie.client.api.PagingBuilder;
+import org.projectnessie.catalog.service.config.LakehouseConfig;
+import org.projectnessie.catalog.service.config.WarehouseConfig;
 import org.projectnessie.error.NessieConflictException;
 import org.projectnessie.error.NessieContentNotFoundException;
 import org.projectnessie.error.NessieNotFoundException;
@@ -64,17 +71,47 @@ import org.projectnessie.model.ContentKey;
 import org.projectnessie.model.ContentResponse;
 import org.projectnessie.model.EntriesResponse;
 import org.projectnessie.model.GetMultipleContentsResponse;
+import org.projectnessie.model.ImmutableEntriesResponse;
+import org.projectnessie.model.ImmutableOperations;
 import org.projectnessie.model.Namespace;
 import org.projectnessie.model.Operation;
+import org.projectnessie.model.Operations;
 import org.projectnessie.model.Reference;
 import org.projectnessie.model.TableReference;
+import org.projectnessie.services.authz.AccessContext;
+import org.projectnessie.services.authz.ApiContext;
+import org.projectnessie.services.authz.Authorizer;
 import org.projectnessie.services.config.ServerConfig;
+import org.projectnessie.services.impl.ContentApiImpl;
+import org.projectnessie.services.impl.TreeApiImpl;
+import org.projectnessie.services.spi.ContentService;
+import org.projectnessie.services.spi.PagedCountingResponseHandler;
+import org.projectnessie.services.spi.TreeService;
+import org.projectnessie.versioned.RequestMeta;
+import org.projectnessie.versioned.RequestMeta.RequestMetaBuilder;
+import org.projectnessie.versioned.VersionStore;
 
 abstract class IcebergApiV1ResourceBase extends AbstractCatalogResource {
 
-  @Inject NessieApiV2 nessieApi;
-  @Inject ServerConfig serverConfig;
-  @Inject CatalogConfig catalogConfig;
+  final TreeService treeService;
+  final ContentService contentService;
+  final ServerConfig serverConfig;
+  final LakehouseConfig lakehouseConfig;
+
+  static final ApiContext ICEBERG_V1 = apiContext("Iceberg", 1);
+
+  protected IcebergApiV1ResourceBase(
+      ServerConfig serverConfig,
+      LakehouseConfig lakehouseConfig,
+      VersionStore store,
+      Authorizer authorizer,
+      AccessContext accessContext) {
+    this.serverConfig = serverConfig;
+    this.lakehouseConfig = lakehouseConfig;
+    this.treeService = new TreeApiImpl(serverConfig, store, authorizer, accessContext, ICEBERG_V1);
+    this.contentService =
+        new ContentApiImpl(serverConfig, store, authorizer, accessContext, ICEBERG_V1);
+  }
 
   protected Stream<EntriesResponse.Entry> listContent(
       NamespaceRef namespaceRef,
@@ -107,18 +144,37 @@ abstract class IcebergApiV1ResourceBase extends AbstractCatalogResource {
             contentType,
             namespace != null && !namespace.isEmpty() ? namespace.getElementCount() + 1 : 1);
 
+    ImmutableEntriesResponse.Builder builder = EntriesResponse.builder();
     EntriesResponse entriesResponse =
-        applyPaging(
-                nessieApi
-                    .getEntries()
-                    .refName(namespaceRef.referenceName())
-                    .hashOnRef(namespaceRef.hashWithRelativeSpec())
-                    .prefixKey(namespace != null ? namespace.toContentKey() : null)
-                    .filter(celFilter)
-                    .withContent(withContent),
-                pageToken,
-                pageSize)
-            .get();
+        treeService.getEntries(
+            namespaceRef.referenceName(),
+            namespaceRef.hashWithRelativeSpec(),
+            null,
+            celFilter,
+            pageToken,
+            withContent,
+            new PagedCountingResponseHandler<>(pageSize) {
+              @Override
+              public EntriesResponse build() {
+                return builder.build();
+              }
+
+              @Override
+              protected boolean doAddEntry(EntriesResponse.Entry entry) {
+                builder.addEntries(entry);
+                return true;
+              }
+
+              @Override
+              public void hasMore(String pagingToken) {
+                builder.isHasMore(true).token(pagingToken);
+              }
+            },
+            h -> builder.effectiveReference(toReference(h)),
+            null,
+            null,
+            namespace != null ? namespace.toContentKey() : null,
+            List.of());
 
     String token = entriesResponse.getToken();
     if (token != null) {
@@ -126,18 +182,6 @@ abstract class IcebergApiV1ResourceBase extends AbstractCatalogResource {
     }
 
     return entriesResponse.getEntries().stream();
-  }
-
-  private static <P extends PagingBuilder<?, ?, ?>> P applyPaging(
-      P pageable, String pageToken, Integer pageSize) {
-    if (pageSize != null) {
-      if (pageToken != null) {
-        pageable.pageToken(pageToken);
-      }
-      pageable.maxRecords(pageSize);
-    }
-
-    return pageable;
   }
 
   protected void renameContent(
@@ -148,13 +192,12 @@ abstract class IcebergApiV1ResourceBase extends AbstractCatalogResource {
 
     ParsedReference ref = requireNonNull(fromTableRef.reference());
     GetMultipleContentsResponse contents =
-        nessieApi
-            .getContent()
-            .refName(ref.name())
-            .hashOnRef(ref.hashWithRelativeSpec())
-            .key(toTableRef.contentKey())
-            .key(fromTableRef.contentKey())
-            .getWithResponse();
+        contentService.getMultipleContents(
+            ref.name(),
+            ref.hashWithRelativeSpec(),
+            List.of(toTableRef.contentKey(), fromTableRef.contentKey()),
+            false,
+            API_READ);
     Map<ContentKey, Content> contentsMap = contents.toContentsMap();
     Content existingFrom = contentsMap.get(fromTableRef.contentKey());
     if (existingFrom == null || !expectedContentType.equals(existingFrom.getType())) {
@@ -180,17 +223,25 @@ abstract class IcebergApiV1ResourceBase extends AbstractCatalogResource {
         effectiveRef instanceof Branch,
         format("Must only rename a %s on a branch, but target is %s", entityType, effectiveRef));
 
-    nessieApi
-        .commitMultipleOperations()
-        .branch((Branch) effectiveRef)
-        .commitMeta(
-            fromMessage(
-                format(
-                    "rename %s %s to %s",
-                    entityType, fromTableRef.contentKey(), toTableRef.contentKey())))
-        .operation(Operation.Delete.of(fromTableRef.contentKey()))
-        .operation(Operation.Put.of(toTableRef.contentKey(), existingFrom))
-        .commitWithResponse();
+    Operations ops =
+        ImmutableOperations.builder()
+            .addOperations(
+                Operation.Delete.of(fromTableRef.contentKey()),
+                Operation.Put.of(toTableRef.contentKey(), existingFrom))
+            .commitMeta(
+                updateCommitMeta(
+                    format(
+                        "rename %s %s to %s",
+                        entityType, fromTableRef.contentKey(), toTableRef.contentKey())))
+            .build();
+
+    RequestMetaBuilder requestMeta =
+        RequestMeta.apiWrite()
+            .addKeyAction(fromTableRef.contentKey(), CatalogOps.CATALOG_RENAME_ENTITY_FROM.name())
+            .addKeyAction(toTableRef.contentKey(), CatalogOps.CATALOG_RENAME_ENTITY_TO.name());
+
+    treeService.commitMultipleOperations(
+        effectiveRef.getName(), effectiveRef.getHash(), ops, requestMeta.build());
   }
 
   protected NamespaceRef decodeNamespaceRef(String prefix, String encodedNs) {
@@ -271,7 +322,7 @@ abstract class IcebergApiV1ResourceBase extends AbstractCatalogResource {
           ParsedReference.parsedReference(serverConfig.getDefaultBranch(), null, BRANCH);
     }
 
-    String resolvedWarehouse = catalogConfig.resolveWarehouseName(warehouse);
+    String resolvedWarehouse = lakehouseConfig.catalog().resolveWarehouseName(warehouse);
 
     return decodedPrefix(parsedReference, resolvedWarehouse);
   }
@@ -303,23 +354,40 @@ abstract class IcebergApiV1ResourceBase extends AbstractCatalogResource {
     return properties;
   }
 
-  void createEntityVerifyNotExists(TableRef tableRef, Content.Type type)
+  WarehouseConfig createEntityCommonOps(
+      TableRef tableRef, Content.Type type, List<IcebergMetadataUpdate> updates)
       throws NessieNotFoundException, CatalogEntityAlreadyExistsException {
     ParsedReference ref = requireNonNull(tableRef.reference());
+
     GetMultipleContentsResponse contentResponse =
-        nessieApi
-            .getContent()
-            .refName(ref.name())
-            .hashOnRef(ref.hashWithRelativeSpec())
-            .key(tableRef.contentKey())
-            .forWrite(true)
-            .getWithResponse();
+        contentService.getMultipleContents(
+            ref.name(),
+            ref.hashWithRelativeSpec(),
+            List.of(tableRef.contentKey()),
+            false,
+            API_WRITE);
     if (!contentResponse.getContents().isEmpty()) {
       Content existing = contentResponse.getContents().get(0).getContent();
       throw new CatalogEntityAlreadyExistsException(
           false, type, tableRef.contentKey(), existing.getType());
     }
     checkBranch(contentResponse.getEffectiveReference());
+
+    WarehouseConfig warehouse = lakehouseConfig.catalog().getWarehouse(tableRef.warehouse());
+    String location =
+        icebergNewEntityBaseLocation(
+            catalogService
+                .locationForEntity(
+                    warehouse,
+                    tableRef.contentKey(),
+                    ICEBERG_TABLE,
+                    ICEBERG_V1,
+                    ref.name(),
+                    ref.hashWithRelativeSpec())
+                .toString());
+    updates.add(setTrustedLocation(location));
+
+    return warehouse;
   }
 
   ContentResponse fetchIcebergEntity(
@@ -327,12 +395,12 @@ abstract class IcebergApiV1ResourceBase extends AbstractCatalogResource {
       throws NessieNotFoundException {
     ParsedReference ref = requireNonNull(tableRef.reference());
     ContentResponse content =
-        nessieApi
-            .getContent()
-            .refName(ref.name())
-            .hashOnRef(ref.hashWithRelativeSpec())
-            .forWrite(forWrite)
-            .getSingle(tableRef.contentKey());
+        contentService.getContent(
+            tableRef.contentKey(),
+            ref.name(),
+            ref.hashWithRelativeSpec(),
+            false,
+            forWrite ? API_WRITE : API_READ);
     checkArgument(
         content.getContent().getType().equals(expectedType),
         "Expecting an Iceberg %s, but got type %s",
@@ -342,7 +410,10 @@ abstract class IcebergApiV1ResourceBase extends AbstractCatalogResource {
   }
 
   Uni<SnapshotResponse> createOrUpdateEntity(
-      TableRef tableRef, IcebergUpdateEntityRequest updateEntityRequest, Content.Type contentType)
+      TableRef tableRef,
+      IcebergUpdateEntityRequest updateEntityRequest,
+      Content.Type contentType,
+      CatalogOps apiOperation)
       throws IOException {
 
     IcebergCatalogOperation op =
@@ -360,7 +431,14 @@ abstract class IcebergApiV1ResourceBase extends AbstractCatalogResource {
         SnapshotReqParams.forSnapshotHttpReq(tableRef.reference(), "iceberg", null);
 
     return Uni.createFrom()
-        .completionStage(catalogService.commit(tableRef.reference(), commit, reqParams))
+        .completionStage(
+            catalogService.commit(
+                tableRef.reference(),
+                commit,
+                reqParams,
+                this::updateCommitMeta,
+                apiOperation.name(),
+                ICEBERG_V1))
         .map(Stream::findFirst)
         .map(
             o ->

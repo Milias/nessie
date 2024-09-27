@@ -2,6 +2,165 @@
 
 **See [Nessie Server upgrade notes](server-upgrade.md) for supported upgrade paths.**
 
+## 0.99.0 Release (September 26, 2024)
+
+See [Release information on GitHub](https://github.com/projectnessie/nessie/releases/tag/nessie-0.99.0).
+
+### Breaking changes
+
+- The Events API has been redesigned to import the Nessie Model API directly, instead of using
+  specific DTO classes. This change is intended to simplify the API and facilitate consumption of
+  the events. The following classes from the `org.projectnessie.events.api` package have been
+  removed and replaced with their respective model classes from the `org.projectnessie.model`
+  package:
+    - `CommitMeta`
+    - `Content` and its subclasses
+    - `ContentKey`
+    - `Reference` and its subclasses
+- Helm chart: the `service` section has been redesigned to allow for extra services to be defined.
+  If you have customized the `service.ports` field, beware that this field is now an array. Also,
+  the management port configuration has been moved to a new `managementService` section. And
+  finally, a new `extraServices` section has been added to allow for additional services to be
+  defined.
+- ADLS: The way how storage URIs are resolved to ADLS "buckets" (container @ storage-account) has been
+  changed (fixed). An ADLS "bucket" is technically identified by the storage-account, optionally further
+  identified by a container/file-system name. It is recommended to specify the newly added via the
+  `nessie.catalog.service.adls.file-systems.<key>.authority=container@storageAccount` option(s).
+  The `container@storageAccount` part is what is mentioned as `<file_system>@<account_name>` in the [Azure
+  docs](https://learn.microsoft.com/en-us/azure/storage/blobs/data-lake-storage-introduction-abfs-uri).
+
+### New Features
+
+- Access check SPI has been enhanced to provide richer information in the `Check` type about the receiving
+  API (Nessie REST or Iceberg REST) and about the individual changes, especially during a commit operation.
+
+### Changes
+
+- S3/GCS/ADLS: Bucket settings
+  - The resolution of the specific bucket options has been enhanced to select the specific bucket options
+    using the longest matching option including an optional path-prefix.
+  - All bucket specific options (`nessie.catalog.service.adls.buckets.<key>.`,
+    `nessie.catalog.service.gcs.buckets.<key>.`, `nessie.catalog.service.adls.file-systems.<key>.`) got a
+    new option `path-prefix`, which is used to restrict settings to a specific object store path prefix.
+  - All bucket specific options (`nessie.catalog.service.adls.buckets.<key>.`,
+    `nessie.catalog.service.gcs.buckets.<key>.`, `nessie.catalog.service.adls.file-systems.<key>.`) got a
+    new option `authority`, which is recommended to specify the technical bucket name. If `authority` is
+    not specified, it will default to the value of the `name` option, then default to the `key` part of the
+    formerly mentioned maps.
+- The base `location` of a new entity (e.g. tables) created via Iceberg REST is derived from the nearest
+  parent namespace that has an explicitly set `location` property. (Path separator character is `/`.)
+- The `location` property on tables (and view) created via Iceberg REST may be explicitly configured, as
+  long as it can be resolved against the configured object storage locations. (Path separator character
+  is `/`.)
+
+### Fixes
+
+- CLI: Fix connecting to Nessie's Iceberg REST
+
+### Commits
+* CLI: Pull in essential `*FileIO` dependencies for Iceberg REST (#9640)
+* Events API: add support for direct JSON serialization (#9637)
+* Remove unused `sourceHashes` from `TransplantResult` (#9628)
+* Events API: use Nessie model API directly and remove DTOs (#9588)
+* remove rocksdb dependency from nessie-compatibility-common (#9632)
+* Helm chart: more flexible services configuration (#9625)
+* Also initialize Iceberg-View `location` (#9629)
+* [Catalog] More flexible named buckets (#9617)
+* Nit: remove unintentional output (#9626)
+* LakehouseConfigObj as transfer-related for export/import (#9623)
+* Persistable `LakehouseConfig` (#9614)
+* Derive `location` of new tables from parent namespaces, add some validations (#9612)
+* HTTP client: Update Apache HTTP client impl to avoid deprecated classes (#9610)
+* Richer access checks (#9553)
+* Version Store Result API enhancements (#9592)
+
+## 0.98.0 Release (September 23, 2024)
+
+See [Release information on GitHub](https://github.com/projectnessie/nessie/releases/tag/nessie-0.98.0).
+
+### Highlights
+
+- Alert: If you are using MySQL or MariaDB, make sure to update `objs` table immediately:
+  ```sql
+  ALTER TABLE objs MODIFY c_headers LONGBLOB;
+  ALTER TABLE objs MODIFY c_incremental_index LONGBLOB;
+  ALTER TABLE objs MODIFY c_reference_index_stripes LONGBLOB;
+  ALTER TABLE objs MODIFY i_index LONGBLOB;
+  ALTER TABLE objs MODIFY i_stripes LONGBLOB;
+  ALTER TABLE objs MODIFY s_text LONGBLOB;
+  ALTER TABLE objs MODIFY t_headers LONGBLOB;
+  ALTER TABLE objs MODIFY t_signature LONGBLOB;
+  ALTER TABLE objs MODIFY u_value LONGBLOB;
+  ALTER TABLE objs MODIFY v_data LONGBLOB;
+  ALTER TABLE objs MODIFY x_data LONGBLOB;
+  ```
+
+### Fixes
+
+- MySQL: Change type of binary columns from `BLOB` to `LONGBLOB`.
+
+### Commits
+* Helm chart: allow setting config options when the value is a zero-value (#9587)
+* Helm chart: fix Azure SAS token settings (#9585)
+* Nit: move constant used in tests (#9579)
+* Construct `*ApiImpl` instead of injecting the V1 rest instances (#9577)
+* Simplify IcebergMetadataUpdate/trusted-location (#9576)
+
+## 0.97.1 Release (September 19, 2024)
+
+See [Release information on GitHub](https://github.com/projectnessie/nessie/releases/tag/nessie-0.97.1).
+
+### Highlights
+
+- Alert: If you are using MySQL or MariaDB, make sure to update `objs` table immediately:
+  ```sql
+  ALTER TABLE objs MODIFY c_headers LONGBLOB;
+  ALTER TABLE objs MODIFY c_incremental_index LONGBLOB;
+  ALTER TABLE objs MODIFY c_reference_index_stripes LONGBLOB;
+  ALTER TABLE objs MODIFY i_index LONGBLOB;
+  ALTER TABLE objs MODIFY i_stripes LONGBLOB;
+  ALTER TABLE objs MODIFY s_text LONGBLOB;
+  ALTER TABLE objs MODIFY t_headers LONGBLOB;
+  ALTER TABLE objs MODIFY t_signature LONGBLOB;
+  ALTER TABLE objs MODIFY u_value LONGBLOB;
+  ALTER TABLE objs MODIFY v_data LONGBLOB;
+  ALTER TABLE objs MODIFY x_data LONGBLOB;
+  ```
+
+### Fixes
+
+- MySQL: Change type of binary columns from `BLOB` to `LONGBLOB`.
+
+### Commits
+* MySQL/MariaDB: change from `BLOB` type to `LONGBLOB` (#9564)
+
+## 0.97.0 Release (September 18, 2024)
+
+See [Release information on GitHub](https://github.com/projectnessie/nessie/releases/tag/nessie-0.97.0).
+
+### New Features
+
+- Helm chart: support has been added for the `DYNAMODB2`, `MONGODB2`, `CASSANDRA2`, and `JDBC2`
+  version store types, introduced in Nessie 0.96.0. Also, support for legacy version store types
+  based on the old "database adapter" code, which were removed in Nessie 0.75.0, has also been
+  removed from the Helm chart.
+
+### Fixes
+
+- Helm chart: fixed a regression where a datasource secret would result in a failure to deploy the
+  chart.
+
+### Commits
+* Downgrade Jandex from 3.2.2 to 3.1.8 (#9561)
+* Site: Add information about warehouse + object storages (#9560)
+* Replace versioned-spi operation types with model operation types (#9551)
+* Use `Tree`/`ContentService` in Catalog (#9547)
+* Nit: fix JSON alias typo in IcebergMetadataUpdate interface (#9550)
+* Quarkus: fail on unknown config properties (#9542)
+* Add secrets-validation option to docs (#9541)
+* Docs: add missing link in TOC of index.md (#9529)
+* Events notification system for Nessie - Reference Implementation (#6943)
+
 ## 0.96.1 Release (September 12, 2024)
 
 See [Release information on GitHub](https://github.com/projectnessie/nessie/releases/tag/nessie-0.96.1).

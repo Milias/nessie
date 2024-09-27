@@ -18,6 +18,7 @@ package org.projectnessie.catalog.service.impl;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.projectnessie.api.v2.params.ParsedReference.parsedReference;
+import static org.projectnessie.catalog.formats.iceberg.nessie.CatalogOps.CATALOG_UPDATE_MULTIPLE;
 import static org.projectnessie.catalog.formats.iceberg.rest.IcebergMetadataUpdate.AddPartitionSpec.addPartitionSpec;
 import static org.projectnessie.catalog.formats.iceberg.rest.IcebergMetadataUpdate.AddSchema.addSchema;
 import static org.projectnessie.catalog.formats.iceberg.rest.IcebergMetadataUpdate.AddSortOrder.addSortOrder;
@@ -32,6 +33,7 @@ import static org.projectnessie.catalog.secrets.UnsafePlainTextSecretsManager.un
 import static org.projectnessie.model.Content.Type.ICEBERG_TABLE;
 import static org.projectnessie.nessie.combined.EmptyHttpHeaders.emptyHttpHeaders;
 import static org.projectnessie.services.authz.AbstractBatchAccessChecker.NOOP_ACCESS_CHECKER;
+import static org.projectnessie.services.authz.ApiContext.apiContext;
 
 import java.net.URI;
 import java.time.Clock;
@@ -51,6 +53,8 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.projectnessie.api.v2.params.ParsedReference;
 import org.projectnessie.catalog.files.api.BackendExceptionMapper;
 import org.projectnessie.catalog.files.api.ObjectIO;
+import org.projectnessie.catalog.files.config.ImmutableAdlsOptions;
+import org.projectnessie.catalog.files.config.ImmutableGcsOptions;
 import org.projectnessie.catalog.files.config.ImmutableS3NamedBucketOptions;
 import org.projectnessie.catalog.files.config.ImmutableS3Options;
 import org.projectnessie.catalog.files.config.S3Config;
@@ -67,10 +71,12 @@ import org.projectnessie.catalog.secrets.ResolvingSecretsProvider;
 import org.projectnessie.catalog.secrets.SecretsProvider;
 import org.projectnessie.catalog.service.api.CatalogCommit;
 import org.projectnessie.catalog.service.config.ImmutableCatalogConfig;
+import org.projectnessie.catalog.service.config.ImmutableLakehouseConfig;
 import org.projectnessie.catalog.service.config.ImmutableServiceConfig;
 import org.projectnessie.catalog.service.config.ImmutableWarehouseConfig;
 import org.projectnessie.client.api.NessieApiV2;
 import org.projectnessie.error.BaseNessieClientServerException;
+import org.projectnessie.model.CommitMeta;
 import org.projectnessie.model.ContentKey;
 import org.projectnessie.model.Reference;
 import org.projectnessie.nessie.combined.CombinedClientBuilder;
@@ -85,16 +91,9 @@ import org.projectnessie.services.authz.AccessContext;
 import org.projectnessie.services.authz.Authorizer;
 import org.projectnessie.services.authz.BatchAccessChecker;
 import org.projectnessie.services.config.ServerConfig;
-import org.projectnessie.services.impl.ConfigApiImpl;
-import org.projectnessie.services.impl.ContentApiImpl;
-import org.projectnessie.services.impl.DiffApiImpl;
-import org.projectnessie.services.impl.TreeApiImpl;
 import org.projectnessie.services.rest.RestV2ConfigResource;
 import org.projectnessie.services.rest.RestV2TreeResource;
-import org.projectnessie.services.spi.ConfigService;
-import org.projectnessie.services.spi.ContentService;
-import org.projectnessie.services.spi.DiffService;
-import org.projectnessie.services.spi.TreeService;
+import org.projectnessie.versioned.RequestMeta;
 import org.projectnessie.versioned.VersionStore;
 import org.projectnessie.versioned.storage.common.persist.Persist;
 import org.projectnessie.versioned.storage.testextension.NessiePersist;
@@ -122,14 +121,21 @@ public abstract class AbstractCatalogService {
   protected ObjectIO objectIO;
   protected CatalogServiceImpl catalogService;
   protected NessieApiV2 api;
+
+  protected ServerConfig serverConfig;
+  protected VersionStore versionStore;
+  protected Authorizer authorizer;
+  protected AccessContext accessContext;
+
   protected volatile Function<AccessContext, BatchAccessChecker> batchAccessCheckerFactory;
 
-  protected ParsedReference commitSingle(Reference branch, ContentKey key)
+  protected ParsedReference commitSingle(Reference branch, ContentKey key, RequestMeta requestMeta)
       throws InterruptedException, ExecutionException, BaseNessieClientServerException {
-    return commitMultiple(branch, key);
+    return commitMultiple(branch, requestMeta, key);
   }
 
-  protected ParsedReference commitMultiple(Reference branch, ContentKey... keys)
+  protected ParsedReference commitMultiple(
+      Reference branch, RequestMeta requestMeta, ContentKey... keys)
       throws InterruptedException, ExecutionException, BaseNessieClientServerException {
     ParsedReference ref =
         parsedReference(branch.getName(), branch.getHash(), Reference.ReferenceType.BRANCH);
@@ -157,7 +163,15 @@ public abstract class AbstractCatalogService {
     }
 
     MultiTableUpdate update =
-        catalogService.commit(ref, commit.build()).toCompletableFuture().get();
+        catalogService
+            .commit(
+                ref,
+                commit.build(),
+                CommitMeta::fromMessage,
+                CATALOG_UPDATE_MULTIPLE.name(),
+                apiContext("Iceberg", 1))
+            .toCompletableFuture()
+            .get();
     branch = update.targetBranch();
 
     return parsedReference(branch.getName(), branch.getHash(), Reference.ReferenceType.BRANCH);
@@ -188,14 +202,20 @@ public abstract class AbstractCatalogService {
 
   private void setupCatalogService() {
     catalogService = new CatalogServiceImpl();
-    catalogService.catalogConfig =
-        ImmutableCatalogConfig.builder()
-            .defaultWarehouse(WAREHOUSE)
-            .putWarehouse(
-                WAREHOUSE,
-                ImmutableWarehouseConfig.builder()
-                    .location("s3://" + BUCKET + "/foo/bar/baz/")
+    catalogService.lakehouseConfig =
+        ImmutableLakehouseConfig.builder()
+            .catalog(
+                ImmutableCatalogConfig.builder()
+                    .defaultWarehouse(WAREHOUSE)
+                    .putWarehouse(
+                        WAREHOUSE,
+                        ImmutableWarehouseConfig.builder()
+                            .location("s3://" + BUCKET + "/foo/bar/baz/")
+                            .build())
                     .build())
+            .s3(ImmutableS3Options.builder().build())
+            .gcs(ImmutableGcsOptions.builder().build())
+            .adls(ImmutableAdlsOptions.builder().build())
             .build();
     catalogService.serviceConfig =
         ImmutableServiceConfig.builder().objectStoresHealthCheck(false).build();
@@ -203,7 +223,10 @@ public abstract class AbstractCatalogService {
     catalogService.objectIO = objectIO;
     catalogService.persist = persist;
     catalogService.executor = executor;
-    catalogService.nessieApi = api;
+    catalogService.serverConfig = serverConfig;
+    catalogService.versionStore = versionStore;
+    catalogService.authorizer = authorizer;
+    catalogService.accessContext = accessContext;
 
     catalogService.backendExceptionMapper = BackendExceptionMapper.builder().build();
   }
@@ -250,7 +273,7 @@ public abstract class AbstractCatalogService {
   private void setupNessieApi() {
     batchAccessCheckerFactory = accessContext -> NOOP_ACCESS_CHECKER;
 
-    ServerConfig config =
+    serverConfig =
         new ServerConfig() {
           @Override
           public String getDefaultBranch() {
@@ -262,21 +285,15 @@ public abstract class AbstractCatalogService {
             return true;
           }
         };
-    VersionStore versionStore = new VersionStoreImpl(persist);
-    Authorizer authorizer = context -> batchAccessCheckerFactory.apply(context);
-    AccessContext accessContext = () -> () -> null;
-    ConfigService configService =
-        new ConfigApiImpl(config, versionStore, authorizer, accessContext, 2);
-    TreeService treeService = new TreeApiImpl(config, versionStore, authorizer, accessContext);
-    ContentService contentService =
-        new ContentApiImpl(config, versionStore, authorizer, accessContext);
-    DiffService diffService = new DiffApiImpl(config, versionStore, authorizer, accessContext);
+    versionStore = new VersionStoreImpl(persist);
+    authorizer = (context, apiContext) -> batchAccessCheckerFactory.apply(context);
+    accessContext = () -> () -> null;
 
     RestV2TreeResource treeResource =
         new RestV2TreeResource(
-            configService, treeService, contentService, diffService, emptyHttpHeaders());
+            serverConfig, versionStore, authorizer, accessContext, emptyHttpHeaders());
     RestV2ConfigResource configResource =
-        new RestV2ConfigResource(config, versionStore, authorizer, accessContext);
+        new RestV2ConfigResource(serverConfig, versionStore, authorizer, accessContext);
     api =
         new CombinedClientBuilder()
             .withTreeResource(treeResource)

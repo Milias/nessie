@@ -15,13 +15,18 @@
  */
 package org.projectnessie.events.api;
 
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
+import com.fasterxml.jackson.databind.annotation.JsonSerialize;
 import org.immutables.value.Value;
+import org.projectnessie.model.Content;
 
 /**
  * Event that is emitted when a content is stored. This event corresponds to a PUT operation in a
  * commit, merge or transplant. This event is emitted after the content has been stored.
  */
 @Value.Immutable
+@JsonSerialize(as = ImmutableContentStoredEvent.class)
+@JsonDeserialize(as = ImmutableContentStoredEvent.class)
 public interface ContentStoredEvent extends ContentEvent {
   @Override
   @Value.Default

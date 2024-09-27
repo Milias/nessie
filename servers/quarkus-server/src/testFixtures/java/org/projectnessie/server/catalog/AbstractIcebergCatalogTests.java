@@ -15,11 +15,13 @@
  */
 package org.projectnessie.server.catalog;
 
+import static java.lang.String.format;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static java.time.format.DateTimeFormatter.ISO_OFFSET_DATE_TIME;
 import static java.util.Collections.singletonMap;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.AssertionsForClassTypes.assertThatThrownBy;
+import static org.projectnessie.server.catalog.IcebergCatalogTestCommon.EMPTY_OBJ_ID;
 import static org.projectnessie.server.catalog.IcebergCatalogTestCommon.WAREHOUSE_NAME;
 
 import com.google.common.collect.ImmutableMap;
@@ -66,6 +68,7 @@ import org.apache.iceberg.io.FileIO;
 import org.apache.iceberg.io.PositionOutputStream;
 import org.apache.iceberg.rest.RESTCatalog;
 import org.apache.iceberg.types.Types;
+import org.apache.iceberg.view.View;
 import org.assertj.core.api.SoftAssertions;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
@@ -81,10 +84,9 @@ import org.projectnessie.model.EntriesResponse;
 import org.projectnessie.model.IcebergTable;
 import org.projectnessie.model.LogResponse;
 import org.projectnessie.model.Reference;
+import org.projectnessie.storage.uri.StorageUri;
 
 public abstract class AbstractIcebergCatalogTests extends CatalogTests<RESTCatalog> {
-  public static final String EMPTY_OBJ_ID =
-      "2e1cfa82b035c26cbbbdae632cea070514eb8b773f616aaeaf668e2f0be8f10d";
 
   private static final Catalogs CATALOGS = new Catalogs();
 
@@ -133,7 +135,7 @@ public abstract class AbstractIcebergCatalogTests extends CatalogTests<RESTCatal
   protected NessieClientBuilder nessieClientBuilder() {
     int catalogServerPort = Integer.getInteger("quarkus.http.port");
     return NessieClientBuilder.createClientBuilderFromSystemSettings()
-        .withUri(String.format("http://127.0.0.1:%d/api/v2/", catalogServerPort));
+        .withUri(format("http://127.0.0.1:%d/api/v2/", catalogServerPort));
   }
 
   @Override
@@ -172,6 +174,57 @@ public abstract class AbstractIcebergCatalogTests extends CatalogTests<RESTCatal
   protected abstract String scheme();
 
   @Test
+  public void testNewTableLocationFromParentNamespace() {
+    @SuppressWarnings("resource")
+    RESTCatalog catalog = catalog();
+
+    if (this.requiresNamespaceCreate()) {
+      catalog.createNamespace(NS);
+    }
+
+    catalog.buildTable(TABLE, SCHEMA).withPartitionSpec(SPEC).withSortOrder(WRITE_ORDER).create();
+
+    Table pokeTable = catalog.loadTable(TABLE);
+
+    String pokeTableLocation = pokeTable.location();
+
+    int idx = pokeTableLocation.indexOf(format("/%s/", TABLE.namespace().level(0)));
+    StorageUri rootIshUri = StorageUri.of(pokeTableLocation.substring(0, idx));
+
+    String namespaceLocation = rootIshUri + "/some/custom/path";
+    Map<String, String> namespaceProps = new HashMap<>();
+    namespaceProps.put("location", namespaceLocation);
+    Namespace namespace = Namespace.of("new_table_location_from_namespace");
+    catalog.createNamespace(namespace, namespaceProps);
+
+    Map<String, String> namespaceMeta = catalog.loadNamespaceMetadata(namespace);
+    assertThat(namespaceMeta).containsEntry("location", namespaceLocation);
+
+    Namespace nestedNamespace = Namespace.of("new_table_location_from_namespace", "nested_level");
+    catalog.createNamespace(nestedNamespace, namespaceProps);
+
+    Table tableWithNsLoc =
+        catalog
+            .buildTable(TableIdentifier.of(nestedNamespace, "table_loc_from_ns"), SCHEMA)
+            .withPartitionSpec(SPEC)
+            .withSortOrder(WRITE_ORDER)
+            .create();
+
+    String tableLocation = tableWithNsLoc.location();
+    assertThat(tableLocation).startsWith(namespaceLocation + "/nested_level/table_loc_from_ns_");
+
+    View viewWithNsLoc =
+        catalog
+            .buildView(TableIdentifier.of(nestedNamespace, "view_loc_from_ns"))
+            .withSchema(SCHEMA)
+            .withQuery("magic", "foo")
+            .withDefaultNamespace(nestedNamespace)
+            .create();
+    String viewLocation = viewWithNsLoc.location();
+    assertThat(viewLocation).startsWith(namespaceLocation + "/nested_level/view_loc_from_ns_");
+  }
+
+  @Test
   public void testNessieCreateOnDifferentBranch() throws Exception {
     @SuppressWarnings("resource")
     RESTCatalog catalog = catalog();
@@ -192,7 +245,7 @@ public abstract class AbstractIcebergCatalogTests extends CatalogTests<RESTCatal
       api.createReference().reference(branch).sourceRefName(defaultBranch.getName()).create();
 
       TableIdentifier onDifferentBranch =
-          TableIdentifier.of(NS, String.format("`%s@%s`", tableName, branch.getName()));
+          TableIdentifier.of(NS, format("`%s@%s`", tableName, branch.getName()));
 
       // "Create ICEBERG_TABLE" commit
       Table table =
@@ -352,7 +405,7 @@ public abstract class AbstractIcebergCatalogTests extends CatalogTests<RESTCatal
         CommitMeta commit = commitLog.get(i);
         IcebergTable c = contents.get(i);
 
-        String tableSpec = String.format("`%s@main#%s`", tableName, commit.getHash());
+        String tableSpec = format("`%s@main#%s`", tableName, commit.getHash());
         table = catalog.loadTable(TableIdentifier.of(NS, tableSpec));
         soft.assertThat(table)
             .describedAs("using branch + commit ID #%d, table '%s'", i, tableSpec)
@@ -361,7 +414,7 @@ public abstract class AbstractIcebergCatalogTests extends CatalogTests<RESTCatal
                 t -> t.properties().get("nessie.commit.id"))
             .containsExactly(c.getSnapshotId(), commit.getHash());
 
-        tableSpec = String.format("`%s@main#%s`", tableName, commit.getCommitTime());
+        tableSpec = format("`%s@main#%s`", tableName, commit.getCommitTime());
         table = catalog.loadTable(TableIdentifier.of(NS, tableSpec));
         soft.assertThat(table)
             .describedAs("using branch + commit timestamp #%d, table '%s'", i, tableSpec)
@@ -370,7 +423,7 @@ public abstract class AbstractIcebergCatalogTests extends CatalogTests<RESTCatal
                 t -> t.properties().get("nessie.commit.id"))
             .containsExactly(c.getSnapshotId(), commit.getHash());
 
-        tableSpec = String.format("`%s#%s`", tableName, commit.getHash());
+        tableSpec = format("`%s#%s`", tableName, commit.getHash());
         table = catalog.loadTable(TableIdentifier.of(NS, tableSpec));
         soft.assertThat(table)
             .describedAs("using commit ID #%d, table '%s'", i, tableSpec)
@@ -379,7 +432,7 @@ public abstract class AbstractIcebergCatalogTests extends CatalogTests<RESTCatal
                 t -> t.properties().get("nessie.commit.id"))
             .containsExactly(c.getSnapshotId(), commit.getHash());
 
-        tableSpec = String.format("`%s#%s`", tableName, commit.getCommitTime());
+        tableSpec = format("`%s#%s`", tableName, commit.getCommitTime());
         table = catalog.loadTable(TableIdentifier.of(NS, tableSpec));
         soft.assertThat(table)
             .describedAs("using commit timestamp #%d, table '%s'", i, tableSpec)
@@ -389,7 +442,7 @@ public abstract class AbstractIcebergCatalogTests extends CatalogTests<RESTCatal
             .containsExactly(c.getSnapshotId(), commit.getHash());
 
         tableSpec =
-            String.format(
+            format(
                 "`%s#%s`",
                 tableName,
                 ISO_OFFSET_DATE_TIME.format(

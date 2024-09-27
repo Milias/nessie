@@ -52,8 +52,9 @@ import org.projectnessie.catalog.files.config.AdlsConfig;
 import org.projectnessie.catalog.files.config.AdlsOptions;
 import org.projectnessie.catalog.files.config.GcsOptions;
 import org.projectnessie.catalog.files.config.HdfsOptions;
+import org.projectnessie.catalog.files.config.GcsConfig;
 import org.projectnessie.catalog.files.config.S3Config;
-import org.projectnessie.catalog.files.config.S3Options;
+import org.projectnessie.catalog.files.config.S3StsCache;
 import org.projectnessie.catalog.files.gcs.GcsClients;
 import org.projectnessie.catalog.files.gcs.GcsExceptionMapper;
 import org.projectnessie.catalog.files.gcs.GcsStorageSupplier;
@@ -74,16 +75,12 @@ import org.projectnessie.catalog.service.impl.IcebergExceptionMapper;
 import org.projectnessie.catalog.service.impl.IllegalArgumentExceptionMapper;
 import org.projectnessie.catalog.service.impl.NessieExceptionMapper;
 import org.projectnessie.catalog.service.impl.PreviousTaskExceptionMapper;
-import org.projectnessie.client.api.NessieApiV2;
-import org.projectnessie.nessie.combined.CombinedClientBuilder;
 import org.projectnessie.nessie.tasks.async.TasksAsync;
 import org.projectnessie.nessie.tasks.async.pool.JavaPoolTasksAsync;
 import org.projectnessie.nessie.tasks.async.wrapping.ThreadContextTasksAsync;
 import org.projectnessie.nessie.tasks.service.TasksServiceConfig;
 import org.projectnessie.nessie.tasks.service.impl.TasksServiceExecutor;
 import org.projectnessie.quarkus.config.CatalogServiceConfig;
-import org.projectnessie.services.rest.RestV2ConfigResource;
-import org.projectnessie.services.rest.RestV2TreeResource;
 import org.projectnessie.versioned.storage.common.config.StoreConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -148,22 +145,22 @@ public class CatalogProducers {
   @Produces
   @Singleton
   public StsClientsPool stsClientsPool(
-      S3Options s3options,
+      S3StsCache s3StsCache,
       @CatalogS3Client SdkHttpClient sdkClient,
       @Any Instance<MeterRegistry> meterRegistry) {
     return new StsClientsPool(
-        s3options, sdkClient, meterRegistry.isResolvable() ? meterRegistry.get() : null);
+        s3StsCache, sdkClient, meterRegistry.isResolvable() ? meterRegistry.get() : null);
   }
 
   @Produces
   @Singleton
   public StsCredentialsManager s3SessionsManager(
-      S3Options s3options,
+      S3StsCache s3StsCache,
       StsClientsPool clientsPool,
       SecretsProvider secretsProvider,
       @Any Instance<MeterRegistry> meterRegistry) {
     return new StsCredentialsManager(
-        s3options,
+        s3StsCache,
         clientsPool,
         secretsProvider,
         meterRegistry.isResolvable() ? meterRegistry.get() : null);
@@ -195,32 +192,35 @@ public class CatalogProducers {
   }
 
   @Produces
-  @Singleton
+  @RequestScoped
   public S3ClientSupplier s3ClientSupplier(
-      S3Options s3Options,
+      LakehouseConfig lakehouseConfig,
       @CatalogS3Client SdkHttpClient sdkClient,
       S3Sessions sessions,
       SecretsProvider secretsProvider) {
-    return new S3ClientSupplier(sdkClient, s3Options, sessions, secretsProvider);
+    return new S3ClientSupplier(sdkClient, lakehouseConfig.s3(), sessions, secretsProvider);
   }
 
   @Produces
-  @Singleton
+  @RequestScoped
   public AdlsClientSupplier adlsClientSupplier(
       AdlsConfig adlsConfig,
-      AdlsOptions adlsOptions,
+      LakehouseConfig lakehouseConfig,
       HttpClient adlsHttpClient,
       SecretsProvider secretsProvider) {
-    return new AdlsClientSupplier(adlsHttpClient, adlsConfig, adlsOptions, secretsProvider);
+    return new AdlsClientSupplier(
+        adlsHttpClient, adlsConfig, lakehouseConfig.adls(), secretsProvider);
   }
 
   @Produces
-  @Singleton
+  @RequestScoped
   public GcsStorageSupplier gcsStorageSupplier(
-      GcsOptions gcsOptions,
+      GcsConfig gcsConfig,
+      LakehouseConfig lakehouseConfig,
       HttpTransportFactory gcsHttpTransportFactory,
       SecretsProvider secretsProvider) {
-    return new GcsStorageSupplier(gcsHttpTransportFactory, gcsOptions, secretsProvider);
+    return new GcsStorageSupplier(
+        gcsHttpTransportFactory, gcsConfig, lakehouseConfig.gcs(), secretsProvider);
   }
 
   @Produces
@@ -231,6 +231,7 @@ public class CatalogProducers {
 
   @Produces
   @Singleton
+  @RequestScoped
   public ObjectIO objectIO(
       S3ClientSupplier s3ClientSupplier,
       S3CredentialsResolver s3CredentialsResolver,
@@ -246,10 +247,10 @@ public class CatalogProducers {
   }
 
   @Produces
-  @Singleton
+  @RequestScoped
   public RequestSigner signer(
-      S3Options s3Options, SecretsProvider secretsProvider, S3Sessions s3sessions) {
-    return new S3Signer(s3Options, secretsProvider, s3sessions);
+      LakehouseConfig lakehouseConfig, SecretsProvider secretsProvider, S3Sessions s3sessions) {
+    return new S3Signer(lakehouseConfig.s3(), secretsProvider, s3sessions);
   }
 
   @Produces
@@ -297,7 +298,7 @@ public class CatalogProducers {
     return new ThreadContextTasksAsync(base, threadContext);
 
     // Cannot use VertxTasksAsync :( - but using ThreadContext.contextual*() works fine.
-    //    return new VertxTasksAsync(vertx, systemUTC(), 1L);
+    //    return new VertxTasksAsync(vertex, systemUTC(), 1L);
     //
     // With Vert.x Quarkus runs into this warning quite often:
     //   WARN  [io.qua.ope.run.QuarkusContextStorage] (executor-thread-1) Context in storage not the
@@ -341,15 +342,5 @@ public class CatalogProducers {
         (SmallRyeThreadContext) threadContext,
         executor,
         "import-jobs");
-  }
-
-  @Produces
-  @RequestScoped
-  public NessieApiV2 nessieApiV2(
-      RestV2ConfigResource configResource, RestV2TreeResource treeResource) {
-    return new CombinedClientBuilder()
-        .withConfigResource(configResource)
-        .withTreeResource(treeResource)
-        .build(NessieApiV2.class);
   }
 }

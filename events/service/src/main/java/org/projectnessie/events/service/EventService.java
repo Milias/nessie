@@ -21,27 +21,28 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import org.projectnessie.events.api.Content;
-import org.projectnessie.events.api.ContentKey;
 import org.projectnessie.events.api.ContentStoredEvent;
 import org.projectnessie.events.api.Event;
 import org.projectnessie.events.api.EventType;
 import org.projectnessie.events.api.ReferenceCreatedEvent;
-import org.projectnessie.events.service.util.ContentMapping;
 import org.projectnessie.events.spi.EventSubscriber;
 import org.projectnessie.events.spi.EventSubscription;
 import org.projectnessie.events.spi.ImmutableEventSubscription;
+import org.projectnessie.model.Content;
+import org.projectnessie.model.ContentKey;
+import org.projectnessie.model.Operation;
+import org.projectnessie.model.Operation.Delete;
+import org.projectnessie.model.Operation.Put;
 import org.projectnessie.versioned.BranchName;
 import org.projectnessie.versioned.Commit;
 import org.projectnessie.versioned.CommitResult;
 import org.projectnessie.versioned.Hash;
 import org.projectnessie.versioned.MergeResult;
-import org.projectnessie.versioned.Operation;
-import org.projectnessie.versioned.Put;
 import org.projectnessie.versioned.ReferenceAssignedResult;
 import org.projectnessie.versioned.ReferenceCreatedResult;
 import org.projectnessie.versioned.ReferenceDeletedResult;
 import org.projectnessie.versioned.Result;
+import org.projectnessie.versioned.TransplantResult;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
@@ -114,7 +115,6 @@ public class EventService implements AutoCloseable {
    * @see ResultCollector#accept(Result)
    * @see ResultCollector#shouldProcess(Result)
    */
-  @SuppressWarnings("unchecked")
   public void onVersionStoreEvent(VersionStoreEvent event) {
     if (!started) {
       return;
@@ -124,13 +124,13 @@ public class EventService implements AutoCloseable {
     String repositoryId = event.getRepositoryId();
     switch (result.getResultType()) {
       case COMMIT:
-        onCommitResult((CommitResult<Commit>) result, repositoryId, user);
+        onCommitResult((CommitResult) result, repositoryId, user);
         break;
       case MERGE:
-        onMergeResult((MergeResult<Commit>) result, repositoryId, user);
+        onMergeResult((MergeResult) result, repositoryId, user);
         break;
       case TRANSPLANT:
-        onTransplantResult((MergeResult<Commit>) result, repositoryId, user);
+        onTransplantResult((TransplantResult) result, repositoryId, user);
         break;
       case REFERENCE_CREATED:
         onReferenceCreatedResult((ReferenceCreatedResult) result, repositoryId, user);
@@ -146,20 +146,18 @@ public class EventService implements AutoCloseable {
     }
   }
 
-  private void onCommitResult(
-      CommitResult<Commit> result, String repositoryId, @Nullable Principal user) {
+  private void onCommitResult(CommitResult result, String repositoryId, @Nullable Principal user) {
     LOGGER.debug("Received commit result: {}", result);
     fireCommitEvent(result.getCommit(), result.getTargetBranch(), repositoryId, user);
   }
 
-  private void onMergeResult(
-      MergeResult<Commit> result, String repositoryId, @Nullable Principal user) {
+  private void onMergeResult(MergeResult result, String repositoryId, @Nullable Principal user) {
     LOGGER.debug("Received merge result: {}", result);
     fireMergeEvent(result, repositoryId, user);
   }
 
   private void onTransplantResult(
-      MergeResult<Commit> result, String repositoryId, @Nullable Principal user) {
+      TransplantResult result, String repositoryId, @Nullable Principal user) {
     LOGGER.debug("Received transplant result: {}", result);
     fireTransplantEvent(result, repositoryId, user);
   }
@@ -190,8 +188,7 @@ public class EventService implements AutoCloseable {
     }
   }
 
-  private void fireMergeEvent(
-      MergeResult<Commit> result, String repositoryId, @Nullable Principal user) {
+  private void fireMergeEvent(MergeResult result, String repositoryId, @Nullable Principal user) {
     fireEvent(factory.newMergeEvent(result, repositoryId, user));
     if (hasCommitSubscribers) {
       for (Commit commit : result.getCreatedCommits()) {
@@ -201,7 +198,7 @@ public class EventService implements AutoCloseable {
   }
 
   private void fireTransplantEvent(
-      MergeResult<Commit> result, String repositoryId, @Nullable Principal user) {
+      TransplantResult result, String repositoryId, @Nullable Principal user) {
     fireEvent(factory.newTransplantEvent(result, repositoryId, user));
     if (hasCommitSubscribers) {
       for (Commit commit : result.getCreatedCommits()) {
@@ -216,15 +213,14 @@ public class EventService implements AutoCloseable {
     if (operations != null && !operations.isEmpty()) {
       Hash hash = Objects.requireNonNull(commit.getHash());
       Instant commitTime = Objects.requireNonNull(commit.getCommitMeta().getCommitTime());
-      for (org.projectnessie.versioned.Operation operation : operations) {
-        if (operation instanceof org.projectnessie.versioned.Put) {
-          ContentKey contentKey = ContentMapping.map(operation.getKey());
-          Content content = ContentMapping.map(((Put) operation).getValue());
+      for (Operation operation : operations) {
+        ContentKey contentKey = operation.getKey();
+        if (operation instanceof Put) {
+          Content content = ((Put) operation).getContent();
           fireEvent(
               factory.newContentStoredEvent(
                   targetBranch, hash, commitTime, contentKey, content, repositoryId, user));
-        } else if (operation instanceof org.projectnessie.versioned.Delete) {
-          ContentKey contentKey = ContentMapping.map(operation.getKey());
+        } else if (operation instanceof Delete) {
           fireEvent(
               factory.newContentRemovedEvent(
                   targetBranch, hash, commitTime, contentKey, repositoryId, user));
