@@ -15,6 +15,9 @@
  */
 package org.projectnessie.services.rest;
 
+import static org.projectnessie.services.rest.RestApiContext.NESSIE_V1;
+import static org.projectnessie.versioned.RequestMeta.API_READ;
+
 import com.fasterxml.jackson.annotation.JsonView;
 import jakarta.enterprise.context.RequestScoped;
 import jakarta.inject.Inject;
@@ -26,7 +29,12 @@ import org.projectnessie.model.ContentKey;
 import org.projectnessie.model.GetMultipleContentsRequest;
 import org.projectnessie.model.GetMultipleContentsResponse;
 import org.projectnessie.model.ser.Views;
+import org.projectnessie.services.authz.AccessContext;
+import org.projectnessie.services.authz.Authorizer;
+import org.projectnessie.services.config.ServerConfig;
+import org.projectnessie.services.impl.ContentApiImpl;
 import org.projectnessie.services.spi.ContentService;
+import org.projectnessie.versioned.VersionStore;
 
 /** REST endpoint for the content-API. */
 @RequestScoped
@@ -41,12 +49,13 @@ public class RestContentResource implements HttpContentApi {
 
   // Mandated by CDI 2.0
   public RestContentResource() {
-    this(null);
+    this(null, null, null, null);
   }
 
   @Inject
-  public RestContentResource(ContentService contentService) {
-    this.contentService = contentService;
+  public RestContentResource(
+      ServerConfig config, VersionStore store, Authorizer authorizer, AccessContext accessContext) {
+    this.contentService = new ContentApiImpl(config, store, authorizer, accessContext, NESSIE_V1);
   }
 
   private ContentService resource() {
@@ -57,7 +66,7 @@ public class RestContentResource implements HttpContentApi {
   @JsonView(Views.V1.class)
   public Content getContent(ContentKey key, String ref, String hashOnRef)
       throws NessieNotFoundException {
-    return resource().getContent(key, ref, hashOnRef, false, false).getContent();
+    return resource().getContent(key, ref, hashOnRef, false, API_READ).getContent();
   }
 
   @Override
@@ -65,6 +74,7 @@ public class RestContentResource implements HttpContentApi {
   public GetMultipleContentsResponse getMultipleContents(
       String ref, String hashOnRef, GetMultipleContentsRequest request)
       throws NessieNotFoundException {
-    return resource().getMultipleContents(ref, hashOnRef, request.getRequestedKeys(), false, false);
+    return resource()
+        .getMultipleContents(ref, hashOnRef, request.getRequestedKeys(), false, API_READ);
   }
 }

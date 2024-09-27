@@ -28,6 +28,8 @@ import static org.projectnessie.model.FetchOption.MINIMAL;
 import static org.projectnessie.model.MergeBehavior.DROP;
 import static org.projectnessie.model.MergeBehavior.FORCE;
 import static org.projectnessie.model.MergeBehavior.NORMAL;
+import static org.projectnessie.versioned.RequestMeta.API_READ;
+import static org.projectnessie.versioned.RequestMeta.API_WRITE;
 
 import com.google.common.collect.ImmutableList;
 import java.util.Collection;
@@ -159,7 +161,7 @@ public abstract class AbstractTestMergeTransplant extends BaseTestServiceImpl {
     table1 =
         (IcebergTable)
             contentApi()
-                .getContent(key1, committed1.getName(), committed1.getHash(), false, false)
+                .getContent(key1, committed1.getName(), committed1.getHash(), false, API_READ)
                 .getContent();
 
     Branch committed2 =
@@ -179,8 +181,7 @@ public abstract class AbstractTestMergeTransplant extends BaseTestServiceImpl {
         commit(target, fromMessage("test-main"), Put.of(key2, table2)).getTargetBranch();
 
     MergeResponse response = actor.act(target, source, committed1, committed2, false);
-    Reference newHead =
-        mergeWentFine(target, source, key1, committed1, committed2, baseHead, response);
+    Reference newHead = mergeWentFine(target, source, key1, baseHead, response);
 
     // try again --> conflict
 
@@ -242,15 +243,8 @@ public abstract class AbstractTestMergeTransplant extends BaseTestServiceImpl {
     }
   }
 
-  @SuppressWarnings("deprecation")
   private Reference mergeWentFine(
-      Branch target,
-      Branch source,
-      ContentKey key1,
-      Branch committed1,
-      Branch committed2,
-      Branch baseHead,
-      MergeResponse response)
+      Branch target, Branch source, ContentKey key1, Branch baseHead, MergeResponse response)
       throws NessieNotFoundException {
     Reference newHead = getReference(target.getName());
     soft.assertThat(response)
@@ -269,30 +263,13 @@ public abstract class AbstractTestMergeTransplant extends BaseTestServiceImpl {
             a -> assertThat(a).isNull(), b -> assertThat(b).isEqualTo(target.getHash()));
     soft.assertThat(response.getDetails())
         .asInstanceOf(list(ContentKeyDetails.class))
-        .extracting(
-            ContentKeyDetails::getKey,
-            ContentKeyDetails::getConflictType,
-            ContentKeyDetails::getMergeBehavior)
-        .contains(tuple(key1, ContentKeyConflict.NONE, NORMAL));
-    if (response.getSourceCommits() != null && !response.getSourceCommits().isEmpty()) {
-      // Database adapter
-      soft.assertThat(response.getSourceCommits())
-          .asInstanceOf(list(LogEntry.class))
-          .extracting(LogEntry::getCommitMeta)
-          .extracting(CommitMeta::getHash, CommitMeta::getMessage)
-          .containsExactly(
-              tuple(committed2.getHash(), "test-branch2"),
-              tuple(committed1.getHash(), "test-branch1"));
-    }
-    if (response.getTargetCommits() != null) {
-      // Database adapter
-      soft.assertThat(response.getTargetCommits())
-          .asInstanceOf(list(LogEntry.class))
-          .extracting(LogEntry::getCommitMeta)
-          .extracting(CommitMeta::getHash, CommitMeta::getMessage)
-          .contains(tuple(baseHead.getHash(), "test-main"));
-    }
-
+        .singleElement()
+        .satisfies(
+            details -> {
+              assertThat(details.getKey()).isEqualTo(key1);
+              assertThat(details.getConflict()).isNull();
+              assertThat(details.getMergeBehavior()).isEqualTo(NORMAL);
+            });
     return newHead;
   }
 
@@ -478,8 +455,8 @@ public abstract class AbstractTestMergeTransplant extends BaseTestServiceImpl {
     Namespace ns = Namespace.parse("a.b.c");
     base = ensureNamespacesForKeysExist(base, ns.toContentKey());
     branch = ensureNamespacesForKeysExist(branch, ns.toContentKey());
-    namespaceApi().createNamespace(base.getName(), ns);
-    namespaceApi().createNamespace(branch.getName(), ns);
+    namespaceApi().createNamespace(base.getName(), ns, API_WRITE);
+    namespaceApi().createNamespace(branch.getName(), ns, API_WRITE);
 
     base = (Branch) getReference(base.getName());
     branch = (Branch) getReference(branch.getName());
@@ -496,7 +473,7 @@ public abstract class AbstractTestMergeTransplant extends BaseTestServiceImpl {
     table1 =
         (IcebergTable)
             contentApi()
-                .getContent(key1, committed1.getName(), committed1.getHash(), false, false)
+                .getContent(key1, committed1.getName(), committed1.getHash(), false, API_READ)
                 .getContent();
 
     Branch committed2 =
@@ -664,7 +641,7 @@ public abstract class AbstractTestMergeTransplant extends BaseTestServiceImpl {
     ContentResponse tableOnRootAfterMerge =
         contentApi()
             .getContent(
-                setup.key, rootAfterMerge.getName(), rootAfterMerge.getHash(), false, false);
+                setup.key, rootAfterMerge.getName(), rootAfterMerge.getHash(), false, API_READ);
 
     soft.assertThat(setup.tableOnWork.getContent().getId())
         .isEqualTo(tableOnRootAfterMerge.getContent().getId());
@@ -729,7 +706,7 @@ public abstract class AbstractTestMergeTransplant extends BaseTestServiceImpl {
     soft.assertThat(root).isNotEqualTo(lastRoot);
 
     ContentResponse tableOnRoot =
-        contentApi().getContent(key, root.getName(), root.getHash(), false, false);
+        contentApi().getContent(key, root.getName(), root.getHash(), false, API_READ);
     soft.assertThat(tableOnRoot.getEffectiveReference()).isEqualTo(root);
 
     Branch work = createBranch("recreateBranch", root);
@@ -749,7 +726,7 @@ public abstract class AbstractTestMergeTransplant extends BaseTestServiceImpl {
     soft.assertThat(work).isNotEqualTo(lastWork);
 
     ContentResponse tableOnWork =
-        contentApi().getContent(key, work.getName(), work.getHash(), false, false);
+        contentApi().getContent(key, work.getName(), work.getHash(), false, API_READ);
     soft.assertThat(tableOnWork.getEffectiveReference()).isEqualTo(work);
 
     soft.assertThat(tableOnWork.getContent().getId())

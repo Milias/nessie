@@ -41,10 +41,12 @@ import java.util.Set;
 import java.util.stream.Stream;
 import org.projectnessie.catalog.files.api.StorageLocations;
 import org.projectnessie.catalog.files.config.GcsBucketOptions;
+import org.projectnessie.catalog.files.config.GcsConfig;
 import org.projectnessie.catalog.files.config.GcsDownscopedCredentials;
 import org.projectnessie.catalog.files.config.GcsOptions;
 import org.projectnessie.catalog.secrets.SecretsProvider;
 import org.projectnessie.catalog.secrets.TokenSecret;
+import org.projectnessie.storage.uri.StorageUri;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -53,14 +55,17 @@ public final class GcsStorageSupplier {
   static final String RANDOMIZED_PART = "([A-Za-z0-9=]+/)?";
 
   private final HttpTransportFactory httpTransportFactory;
+  private final GcsConfig gcsConfig;
   private final GcsOptions gcsOptions;
   private final SecretsProvider secretsProvider;
 
   public GcsStorageSupplier(
       HttpTransportFactory httpTransportFactory,
+      GcsConfig gcsConfig,
       GcsOptions gcsOptions,
       SecretsProvider secretsProvider) {
     this.httpTransportFactory = httpTransportFactory;
+    this.gcsConfig = gcsConfig;
     this.gcsOptions = gcsOptions;
     this.secretsProvider = secretsProvider;
   }
@@ -73,13 +78,12 @@ public final class GcsStorageSupplier {
     return secretsProvider;
   }
 
-  public GcsBucketOptions bucketOptions(GcsLocation location) {
-    return gcsOptions.effectiveOptionsForBucket(Optional.of(location.bucket()));
+  public GcsBucketOptions bucketOptions(StorageUri location) {
+    return gcsOptions.resolveOptionsForUri(location);
   }
 
   public Storage forLocation(GcsBucketOptions bucketOptions) {
-    return GcsClients.buildStorage(
-        gcsOptions, bucketOptions, httpTransportFactory, secretsProvider);
+    return GcsClients.buildStorage(gcsConfig, bucketOptions, httpTransportFactory, secretsProvider);
   }
 
   public Optional<TokenSecret> generateDelegationToken(

@@ -11,11 +11,6 @@ podLabels:
   app: nessie-{{ .Release.Namespace }}-{{ .Values.versionStoreType }}
 podAnnotations:
   app: nessie-{{ .Release.Namespace }}-{{ .Values.versionStoreType }}
-service:
-  ports:
-    nessie-mgmt: 9001
-    nessie-alt: 19121
-  sessionAffinity: ClientIP
 catalog:
   enabled: true
   iceberg:
@@ -41,13 +36,29 @@ catalog:
     s3:
       transport:
         readTimeout: PT1M
+        expectContinueEnabled: false
       defaultOptions:
         region: us-west-2
         endpoint: s3.amazonaws.com
-#        accessKeySecret:
-#          name: s3-access-key
-#          awsAccessKeyId: access-key-id
-#          awsSecretAccessKey: secret-access-key
+        requestSigningEnabled: false
+        pathStyleAccess: false
+        serverIam:
+          enabled: false
+        clientIam:
+          enabled: true
+          statements:
+            - >-
+              {
+                "Effect": "Allow",
+                "Action": "s3:GetObject",
+                "Resource": "arn:aws:s3:::bucket1.{{ .Release.Namespace }}/*"
+              }
+            - >-
+              {
+                "Effect": "Allow",
+                "Action": "s3:PutObject",
+                "Resource": "arn:aws:s3:::bucket1.{{ .Release.Namespace }}/*"
+              }
       buckets:
         - name: bucket1.{{ .Release.Namespace }}
           endpoint: prod-us.s3.amazonaws.com
@@ -55,26 +66,17 @@ catalog:
         - name: bucket2.{{ .Release.Namespace }}
           endpoint: prod-us2.s3.amazonaws.com
           region: us-east-2
-#          accessKeySecret:
-#            name: s3-access-key
-#            awsAccessKeyId: access-key-id
-#            awsSecretAccessKey: secret-access-key
     gcs:
       transport:
         readTimeout: PT1M
+        maxAttempts: 0
       defaultOptions:
         host: https://storage.googleapis.com
-#        authCredentialsJsonSecret:
-#          name: gcs-credentials
-#          key: credentials.json
       buckets:
       - name: bucket1.{{ .Release.Namespace }}
         projectId: project-id
       - name: bucket2.{{ .Release.Namespace }}
         projectId: project-id
-#        authCredentialsJsonSecret:
-#          name: gcs-credentials
-#          key: credentials.json
 
     adls:
       transport:
@@ -93,10 +95,6 @@ catalog:
         retryPolicy: EXPONENTIAL_BACKOFF
         retryDelay: PT1S
         authType: NONE
-#        accountSecret:
-#          name: adls-account-secret
-#          accountName: account-name
-#          accountKey: account-key
       filesystems:
       - name: filesystem1-{{ .Release.Namespace }}
         endpoint: https://account1.azuredatalakestore.net
@@ -110,10 +108,6 @@ catalog:
         retryInterval: PT5S
         retryPolicy: EXPONENTIAL_BACKOFF
         retryDelay: PT1S
-#        accountSecret:
-#          name: adls-account-secret
-#          accountName: account-name
-#          accountKey: account-key
 
 livenessProbe:
   initialDelaySeconds: 2

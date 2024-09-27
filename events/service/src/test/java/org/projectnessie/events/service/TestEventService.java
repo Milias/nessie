@@ -38,19 +38,19 @@ import org.projectnessie.events.api.EventType;
 import org.projectnessie.events.spi.EventSubscriber;
 import org.projectnessie.model.ContentKey;
 import org.projectnessie.model.IcebergTable;
+import org.projectnessie.model.Operation.Delete;
+import org.projectnessie.model.Operation.Put;
 import org.projectnessie.versioned.BranchName;
 import org.projectnessie.versioned.Commit;
-import org.projectnessie.versioned.Delete;
 import org.projectnessie.versioned.Hash;
 import org.projectnessie.versioned.ImmutableCommit;
 import org.projectnessie.versioned.ImmutableCommitResult;
-import org.projectnessie.versioned.ImmutableMergeResult;
 import org.projectnessie.versioned.ImmutableReferenceAssignedResult;
 import org.projectnessie.versioned.ImmutableReferenceCreatedResult;
 import org.projectnessie.versioned.ImmutableReferenceDeletedResult;
-import org.projectnessie.versioned.Put;
+import org.projectnessie.versioned.MergeResult;
 import org.projectnessie.versioned.Result;
-import org.projectnessie.versioned.ResultType;
+import org.projectnessie.versioned.TransplantResult;
 
 @ExtendWith(MockitoExtension.class)
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
@@ -128,8 +128,8 @@ public class TestEventService {
   private Stream<Result> allResults() {
     Commit commit =
         ImmutableCommit.builder()
-            .hash(Hash.of("5678"))
-            .parentHash(Hash.of("1234"))
+            .hash(Hash.of("deadbeef"))
+            .parentHash(Hash.of("cafebabe"))
             .commitMeta(
                 org.projectnessie.model.ImmutableCommitMeta.builder()
                     .committer("committer")
@@ -146,39 +146,38 @@ public class TestEventService {
                     Delete.of(ContentKey.of("foo.bar.table2"))))
             .build();
     return Stream.of(
-        ImmutableCommitResult.<Commit>builder()
+        ImmutableCommitResult.builder()
             .commit(commit)
             .targetBranch(BranchName.of("branch1"))
             .build(),
-        ImmutableMergeResult.<Commit>builder()
-            .resultType(ResultType.MERGE)
+        MergeResult.builder()
             .sourceRef(BranchName.of("branch1"))
+            .sourceHash(Hash.of("11111111"))
             .targetBranch(BranchName.of("branch2"))
-            .effectiveTargetHash(Hash.of("1234")) // hash before
-            .resultantTargetHash(Hash.of("5678")) // hash after
+            .effectiveTargetHash(Hash.of("cafebabe")) // hash before
+            .resultantTargetHash(Hash.of("deadbeef")) // hash after
             .commonAncestor(Hash.of("0000"))
             .addCreatedCommits(commit)
             .build(),
-        ImmutableMergeResult.<Commit>builder()
-            .resultType(ResultType.TRANSPLANT)
+        TransplantResult.builder()
             .sourceRef(BranchName.of("branch1"))
             .targetBranch(BranchName.of("branch2"))
-            .effectiveTargetHash(Hash.of("1234")) // hash before
-            .resultantTargetHash(Hash.of("5678")) // hash after
+            .effectiveTargetHash(Hash.of("cafebabe")) // hash before
+            .resultantTargetHash(Hash.of("deadbeef")) // hash after
             .addCreatedCommits(commit)
             .build(),
         ImmutableReferenceCreatedResult.builder()
             .namedRef(BranchName.of("branch1"))
-            .hash(Hash.of("1234"))
+            .hash(Hash.of("cafebabe"))
             .build(),
         ImmutableReferenceAssignedResult.builder()
             .namedRef(BranchName.of("branch1"))
-            .previousHash(Hash.of("1234"))
-            .currentHash(Hash.of("5678"))
+            .previousHash(Hash.of("cafebabe"))
+            .currentHash(Hash.of("deadbeef"))
             .build(),
         ImmutableReferenceDeletedResult.builder()
             .namedRef(BranchName.of("branch1"))
-            .hash(Hash.of("1234"))
+            .hash(Hash.of("cafebabe"))
             .build());
   }
 }

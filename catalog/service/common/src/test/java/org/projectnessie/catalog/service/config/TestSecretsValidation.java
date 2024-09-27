@@ -35,6 +35,7 @@ import org.projectnessie.catalog.files.config.ImmutableAdlsFileSystemOptions;
 import org.projectnessie.catalog.files.config.ImmutableAdlsNamedFileSystemOptions;
 import org.projectnessie.catalog.files.config.ImmutableAdlsOptions;
 import org.projectnessie.catalog.files.config.ImmutableGcsBucketOptions;
+import org.projectnessie.catalog.files.config.ImmutableGcsConfig;
 import org.projectnessie.catalog.files.config.ImmutableGcsNamedBucketOptions;
 import org.projectnessie.catalog.files.config.ImmutableGcsOptions;
 import org.projectnessie.catalog.files.config.ImmutableS3BucketOptions;
@@ -125,7 +126,7 @@ public class TestSecretsValidation {
 
     return Stream.of(
         arguments(builder.get().build(), List.of()),
-        //
+        // 1
         arguments(
             builder
                 .get()
@@ -142,6 +143,7 @@ public class TestSecretsValidation {
                     NOT_FOUND,
                     Optional.empty(),
                     "secret does not exist"))),
+        // 2
         arguments(
             builder
                 .get()
@@ -159,7 +161,7 @@ public class TestSecretsValidation {
                     NOT_FOUND,
                     Optional.empty(),
                     "secret does not exist"))),
-        //
+        // 3
         arguments(
             builder
                 .get()
@@ -178,6 +180,7 @@ public class TestSecretsValidation {
                     NOT_FOUND,
                     Optional.empty(),
                     "secret does not exist"))),
+        // 4
         arguments(
             builder
                 .get()
@@ -194,6 +197,7 @@ public class TestSecretsValidation {
                     NOT_FOUND,
                     Optional.empty(),
                     "secret does not exist"))),
+        // 5
         arguments(
             builder
                 .get()
@@ -210,6 +214,7 @@ public class TestSecretsValidation {
                     NOT_FOUND,
                     Optional.empty(),
                     "secret does not exist"))),
+        // 6
         arguments(
             builder
                 .get()
@@ -229,7 +234,7 @@ public class TestSecretsValidation {
                     NOT_FOUND,
                     Optional.empty(),
                     "secret does not exist"))),
-        //
+        // 7
         arguments(
             builder
                 .get()
@@ -355,9 +360,11 @@ public class TestSecretsValidation {
     Supplier<ImmutableSmallryeConfigs.Builder> forS3config =
         () ->
             ImmutableSmallryeConfigs.builder()
+                .usePersistedLakehouseConfig(false) // doesn't have any effect in this test
                 .validateSecrets(true) // doesn't have any effect in this test
                 .s3(ImmutableS3Options.builder().build())
                 .gcs(ImmutableGcsOptions.builder().build())
+                .gcsConfig(ImmutableGcsConfig.builder().build())
                 .adls(ImmutableAdlsOptions.builder().build())
                 .adlsconfig(AdlsConfig.builder().build())
                 .serviceConfig(

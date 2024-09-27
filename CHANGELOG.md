@@ -10,6 +10,112 @@ as necessary. Empty sections will not end in the release notes.
 
 ### Upgrade notes
 
+### Breaking changes
+
+### New Features
+
+### Changes
+
+### Deprecations
+
+### Fixes
+
+### Commits
+
+## [0.99.0] Release (2024-09-26)
+
+### Breaking changes
+
+- The Events API has been redesigned to import the Nessie Model API directly, instead of using
+  specific DTO classes. This change is intended to simplify the API and facilitate consumption of
+  the events. The following classes from the `org.projectnessie.events.api` package have been
+  removed and replaced with their respective model classes from the `org.projectnessie.model`
+  package:
+    - `CommitMeta`
+    - `Content` and its subclasses
+    - `ContentKey`
+    - `Reference` and its subclasses
+- Helm chart: the `service` section has been redesigned to allow for extra services to be defined.
+  If you have customized the `service.ports` field, beware that this field is now an array. Also,
+  the management port configuration has been moved to a new `managementService` section. And
+  finally, a new `extraServices` section has been added to allow for additional services to be
+  defined.
+- ADLS: The way how storage URIs are resolved to ADLS "buckets" (container @ storage-account) has been
+  changed (fixed). An ADLS "bucket" is technically identified by the storage-account, optionally further
+  identified by a container/file-system name. It is recommended to specify the newly added via the
+  `nessie.catalog.service.adls.file-systems.<key>.authority=container@storageAccount` option(s).
+  The `container@storageAccount` part is what is mentioned as `<file_system>@<account_name>` in the [Azure
+  docs](https://learn.microsoft.com/en-us/azure/storage/blobs/data-lake-storage-introduction-abfs-uri).
+
+### New Features
+
+- Access check SPI has been enhanced to provide richer information in the `Check` type about the receiving
+  API (Nessie REST or Iceberg REST) and about the individual changes, especially during a commit operation.
+
+### Changes
+
+- S3/GCS/ADLS: Bucket settings
+  - The resolution of the specific bucket options has been enhanced to select the specific bucket options
+    using the longest matching option including an optional path-prefix.
+  - All bucket specific options (`nessie.catalog.service.adls.buckets.<key>.`,
+    `nessie.catalog.service.gcs.buckets.<key>.`, `nessie.catalog.service.adls.file-systems.<key>.`) got a
+    new option `path-prefix`, which is used to restrict settings to a specific object store path prefix.
+  - All bucket specific options (`nessie.catalog.service.adls.buckets.<key>.`,
+    `nessie.catalog.service.gcs.buckets.<key>.`, `nessie.catalog.service.adls.file-systems.<key>.`) got a
+    new option `authority`, which is recommended to specify the technical bucket name. If `authority` is
+    not specified, it will default to the value of the `name` option, then default to the `key` part of the
+    formerly mentioned maps.
+- The base `location` of a new entity (e.g. tables) created via Iceberg REST is derived from the nearest
+  parent namespace that has an explicitly set `location` property. (Path separator character is `/`.)
+- The `location` property on tables (and view) created via Iceberg REST may be explicitly configured, as
+  long as it can be resolved against the configured object storage locations. (Path separator character
+  is `/`.)
+
+### Fixes
+
+- CLI: Fix connecting to Nessie's Iceberg REST
+
+## [0.97.1] Release (2024-09-19)
+
+### Highlights
+
+- Alert: If you are using MySQL or MariaDB, make sure to update `objs` table immediately:
+  ```sql
+  ALTER TABLE objs MODIFY c_headers LONGBLOB;
+  ALTER TABLE objs MODIFY c_incremental_index LONGBLOB;
+  ALTER TABLE objs MODIFY c_reference_index_stripes LONGBLOB;
+  ALTER TABLE objs MODIFY i_index LONGBLOB;
+  ALTER TABLE objs MODIFY i_stripes LONGBLOB;
+  ALTER TABLE objs MODIFY s_text LONGBLOB;
+  ALTER TABLE objs MODIFY t_headers LONGBLOB;
+  ALTER TABLE objs MODIFY t_signature LONGBLOB;
+  ALTER TABLE objs MODIFY u_value LONGBLOB;
+  ALTER TABLE objs MODIFY v_data LONGBLOB;
+  ALTER TABLE objs MODIFY x_data LONGBLOB;
+  ```
+
+### Fixes
+
+- MySQL: Change type of binary columns from `BLOB` to `LONGBLOB`.
+
+## [0.96.1] Release (2024-09-12)
+
+### New Features
+
+- Helm chart: support has been added for the `DYNAMODB2`, `MONGODB2`, `CASSANDRA2`, and `JDBC2`
+  version store types, introduced in Nessie 0.96.0. Also, support for legacy version store types
+  based on the old "database adapter" code, which were removed in Nessie 0.75.0, has also been
+  removed from the Helm chart.
+
+### Fixes
+
+- Helm chart: fixed a regression where a datasource secret would result in a failure to deploy the
+  chart.
+
+## [0.96.0] Release (2024-09-11)
+
+### Upgrade notes
+
 - Support for Java 8 has been removed, even for Nessie clients. Minimum runtime requirement for clients
   is Java 11.
 - Nessie Docker images now all execute as user `nessie` (UID 10000 and GID 10001). They would
@@ -68,8 +174,6 @@ as necessary. Empty sections will not end in the release notes.
   store type, but uses way less attributes, which reduces storage overhead.
 - Added functionality to optionally validate that referenced secrets can be resolved, opt-in.
 
-### Changes
-
 ### Deprecations
 
 - The current version store type `JDBC` is deprecated, please migrate to the new `JDBC2` version store
@@ -85,8 +189,6 @@ as necessary. Empty sections will not end in the release notes.
 ### Fixes
 
 - CLI: fixed a bug that was preventing the tool from running properly when history is disabled.
-
-### Commits
 
 ## [0.95.0] Release (2024-08-07)
 
@@ -806,7 +908,11 @@ as necessary. Empty sections will not end in the release notes.
 - Tests: Make `ITCassandraBackendFactory` less flaky (#7186)
 - IntelliJ: Exclude some more directories from indexing (#7181)
 
-[Unreleased]: https://github.com/projectnessie/nessie/compare/nessie-0.95.0...HEAD
+[Unreleased]: https://github.com/projectnessie/nessie/compare/nessie-0.99.0...HEAD
+[0.99.0]: https://github.com/projectnessie/nessie/compare/nessie-0.97.1...nessie-0.99.0
+[0.97.1]: https://github.com/projectnessie/nessie/compare/nessie-0.96.1...nessie-0.97.1
+[0.96.1]: https://github.com/projectnessie/nessie/compare/nessie-0.96.0...nessie-0.96.1
+[0.96.0]: https://github.com/projectnessie/nessie/compare/nessie-0.95.0...nessie-0.96.0
 [0.95.0]: https://github.com/projectnessie/nessie/compare/nessie-0.94.3...nessie-0.95.0
 [0.94.3]: https://github.com/projectnessie/nessie/compare/nessie-0.94.2...nessie-0.94.3
 [0.94.2]: https://github.com/projectnessie/nessie/compare/nessie-0.94.1...nessie-0.94.2

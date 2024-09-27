@@ -16,6 +16,7 @@
 package org.projectnessie.catalog.service.rest;
 
 import static java.util.Objects.requireNonNull;
+import static org.projectnessie.catalog.formats.iceberg.nessie.CatalogOps.CATALOG_UPDATE_MULTIPLE;
 import static org.projectnessie.model.Content.Type.ICEBERG_TABLE;
 
 import io.smallrye.common.annotation.Blocking;
@@ -43,7 +44,12 @@ import org.projectnessie.catalog.formats.iceberg.rest.IcebergCommitTransactionRe
 import org.projectnessie.catalog.formats.iceberg.rest.IcebergConfigResponse;
 import org.projectnessie.catalog.service.api.CatalogCommit;
 import org.projectnessie.catalog.service.api.SnapshotReqParams;
+import org.projectnessie.catalog.service.config.LakehouseConfig;
 import org.projectnessie.catalog.service.rest.IcebergErrorMapper.IcebergEntityKind;
+import org.projectnessie.services.authz.AccessContext;
+import org.projectnessie.services.authz.Authorizer;
+import org.projectnessie.services.config.ServerConfig;
+import org.projectnessie.versioned.VersionStore;
 
 /**
  * Handles Iceberg REST API v1 endpoints that are not strongly associated with a particular entity
@@ -57,6 +63,20 @@ public class IcebergApiV1GenericResource extends IcebergApiV1ResourceBase {
 
   @Inject IcebergConfigurer icebergConfigurer;
   @Inject IcebergErrorMapper errorMapper;
+
+  public IcebergApiV1GenericResource() {
+    this(null, null, null, null, null);
+  }
+
+  @Inject
+  public IcebergApiV1GenericResource(
+      ServerConfig serverConfig,
+      LakehouseConfig lakehouseConfig,
+      VersionStore store,
+      Authorizer authorizer,
+      AccessContext accessContext) {
+    super(serverConfig, lakehouseConfig, store, authorizer, accessContext);
+  }
 
   @ServerExceptionMapper
   public Response mapException(Exception ex) {
@@ -140,7 +160,14 @@ public class IcebergApiV1GenericResource extends IcebergApiV1ResourceBase {
     // Although we don't return anything, need to make sure that the commit operation starts and all
     // results are consumed.
     return Uni.createFrom()
-        .completionStage(catalogService.commit(ref, commit.build(), reqParams))
+        .completionStage(
+            catalogService.commit(
+                ref,
+                commit.build(),
+                reqParams,
+                this::updateCommitMeta,
+                CATALOG_UPDATE_MULTIPLE.name(),
+                ICEBERG_V1))
         .map(stream -> stream.reduce(null, (ident, snap) -> ident, (i1, i2) -> i1));
   }
 }

@@ -26,6 +26,7 @@ import java.util.function.Consumer;
 import org.projectnessie.model.CommitMeta;
 import org.projectnessie.model.ContentKey;
 import org.projectnessie.model.IdentifiedContentKey;
+import org.projectnessie.model.Operation;
 import org.projectnessie.model.RepositoryConfig;
 import org.projectnessie.versioned.paging.PaginationIterator;
 
@@ -50,7 +51,7 @@ public class EventsVersionStore implements VersionStore {
   }
 
   @Override
-  public CommitResult<Commit> commit(
+  public CommitResult commit(
       @Nonnull BranchName branch,
       @Nonnull Optional<Hash> referenceHash,
       @Nonnull CommitMeta metadata,
@@ -58,16 +59,16 @@ public class EventsVersionStore implements VersionStore {
       @Nonnull CommitValidator validator,
       @Nonnull BiConsumer<ContentKey, String> addedContents)
       throws ReferenceNotFoundException, ReferenceConflictException {
-    CommitResult<Commit> result =
+    CommitResult result =
         delegate.commit(branch, referenceHash, metadata, operations, validator, addedContents);
     resultSink.accept(result);
     return result;
   }
 
   @Override
-  public MergeResult<Commit> transplant(TransplantOp transplantOp)
+  public TransplantResult transplant(TransplantOp transplantOp)
       throws ReferenceNotFoundException, ReferenceConflictException {
-    MergeResult<Commit> result = delegate.transplant(transplantOp);
+    TransplantResult result = delegate.transplant(transplantOp);
     if (result.wasApplied()) {
       resultSink.accept(result);
     }
@@ -75,9 +76,9 @@ public class EventsVersionStore implements VersionStore {
   }
 
   @Override
-  public MergeResult<Commit> merge(MergeOp mergeOp)
+  public MergeResult merge(MergeOp mergeOp)
       throws ReferenceNotFoundException, ReferenceConflictException {
-    MergeResult<Commit> result = delegate.merge(mergeOp);
+    MergeResult result = delegate.merge(mergeOp);
     if (result.wasApplied()) {
       resultSink.accept(result);
     }

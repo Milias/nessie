@@ -18,17 +18,19 @@ package org.projectnessie.services.rest;
 import static com.google.common.base.Preconditions.checkArgument;
 import static org.projectnessie.api.v2.params.ReferenceResolver.resolveReferencePathElement;
 import static org.projectnessie.services.impl.RefUtil.toReference;
+import static org.projectnessie.services.rest.RestApiContext.NESSIE_V2;
+import static org.projectnessie.services.rest.common.RestCommon.updateCommitMeta;
 import static org.projectnessie.services.spi.TreeService.MAX_COMMIT_LOG_ENTRIES;
+import static org.projectnessie.versioned.RequestMeta.API_READ;
+import static org.projectnessie.versioned.RequestMeta.API_WRITE;
 
 import com.fasterxml.jackson.annotation.JsonView;
 import jakarta.enterprise.context.RequestScoped;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.core.HttpHeaders;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
-import java.util.stream.Collectors;
 import org.projectnessie.api.v2.http.HttpTreeApi;
 import org.projectnessie.api.v2.params.CommitLogParams;
 import org.projectnessie.api.v2.params.DiffParams;
@@ -66,11 +68,19 @@ import org.projectnessie.model.ReferenceHistoryResponse;
 import org.projectnessie.model.ReferencesResponse;
 import org.projectnessie.model.SingleReferenceResponse;
 import org.projectnessie.model.ser.Views;
+import org.projectnessie.services.authz.AccessContext;
+import org.projectnessie.services.authz.Authorizer;
+import org.projectnessie.services.config.ServerConfig;
+import org.projectnessie.services.impl.ConfigApiImpl;
+import org.projectnessie.services.impl.ContentApiImpl;
+import org.projectnessie.services.impl.DiffApiImpl;
+import org.projectnessie.services.impl.TreeApiImpl;
 import org.projectnessie.services.spi.ConfigService;
 import org.projectnessie.services.spi.ContentService;
 import org.projectnessie.services.spi.DiffService;
 import org.projectnessie.services.spi.PagedCountingResponseHandler;
 import org.projectnessie.services.spi.TreeService;
+import org.projectnessie.versioned.VersionStore;
 
 /** REST endpoint for the tree-API. */
 @RequestScoped
@@ -90,15 +100,15 @@ public class RestV2TreeResource implements HttpTreeApi {
 
   @Inject
   public RestV2TreeResource(
-      ConfigService configService,
-      TreeService treeService,
-      ContentService contentService,
-      DiffService diffService,
+      ServerConfig config,
+      VersionStore store,
+      Authorizer authorizer,
+      AccessContext accessContext,
       HttpHeaders httpHeaders) {
-    this.configService = configService;
-    this.treeService = treeService;
-    this.contentService = contentService;
-    this.diffService = diffService;
+    this.configService = new ConfigApiImpl(config, store, authorizer, accessContext, NESSIE_V2);
+    this.treeService = new TreeApiImpl(config, store, authorizer, accessContext, NESSIE_V2);
+    this.contentService = new ContentApiImpl(config, store, authorizer, accessContext, NESSIE_V2);
+    this.diffService = new DiffApiImpl(config, store, authorizer, accessContext, NESSIE_V2);
     this.httpHeaders = httpHeaders;
   }
 
@@ -349,7 +359,7 @@ public class RestV2TreeResource implements HttpTreeApi {
     ParsedReference reference = parseRefPathString(ref);
     return content()
         .getContent(
-            key, reference.name(), reference.hashWithRelativeSpec(), withDocumentation, forWrite);
+            key, reference.name(), reference.hashWithRelativeSpec(), withDocumentation, API_READ);
   }
 
   @JsonView(Views.V2.class)
@@ -374,7 +384,7 @@ public class RestV2TreeResource implements HttpTreeApi {
             reference.hashWithRelativeSpec(),
             request.getRequestedKeys(),
             withDocumentation,
-            forWrite);
+            API_READ);
   }
 
   @JsonView(Views.V2.class)
@@ -445,53 +455,11 @@ public class RestV2TreeResource implements HttpTreeApi {
             .commitMeta(commitMeta(CommitMeta.builder().from(operations.getCommitMeta())).build());
 
     ParsedReference ref = parseRefPathString(branch);
-    return tree().commitMultipleOperations(ref.name(), ref.hashWithRelativeSpec(), ops.build());
+    return tree()
+        .commitMultipleOperations(ref.name(), ref.hashWithRelativeSpec(), ops.build(), API_WRITE);
   }
 
   CommitMeta.Builder commitMeta(CommitMeta.Builder commitMeta) {
-    httpHeaders
-        .getRequestHeaders()
-        .forEach(
-            (k, v) -> {
-              if (!v.isEmpty()) {
-                String lower = k.toLowerCase(Locale.ROOT);
-                switch (lower) {
-                  case "nessie-commit-message":
-                    v.stream()
-                        .map(String::trim)
-                        .filter(s -> !s.isEmpty())
-                        .findFirst()
-                        .ifPresent(commitMeta::message);
-                    break;
-                  case "nessie-commit-authors":
-                    v.stream()
-                        .flatMap(s -> Arrays.stream(s.split(",")))
-                        .map(String::trim)
-                        .filter(s -> !s.isEmpty())
-                        .forEach(commitMeta::addAllAuthors);
-                    break;
-                  case "nessie-commit-signedoffby":
-                    v.stream()
-                        .flatMap(s -> Arrays.stream(s.split(",")))
-                        .map(String::trim)
-                        .filter(s -> !s.isEmpty())
-                        .forEach(commitMeta::addAllSignedOffBy);
-                    break;
-                  default:
-                    if (lower.startsWith("nessie-commit-property-")) {
-                      String prop = lower.substring("nessie-commit-property-".length()).trim();
-                      commitMeta.putAllProperties(
-                          prop,
-                          v.stream()
-                              .map(String::trim)
-                              .filter(s -> !s.isEmpty())
-                              .collect(Collectors.toList()));
-                    }
-                    break;
-                }
-              }
-            });
-
-    return commitMeta;
+    return updateCommitMeta(commitMeta, httpHeaders);
   }
 }

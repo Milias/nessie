@@ -15,13 +15,18 @@
  */
 package org.projectnessie.events.api;
 
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
+import com.fasterxml.jackson.databind.annotation.JsonSerialize;
 import org.immutables.value.Value;
+import org.projectnessie.model.CommitMeta;
 
 /**
  * Event that is emitted when a commit is performed. This event is emitted after the commit has been
  * persisted.
  */
 @Value.Immutable
+@JsonSerialize(as = ImmutableCommitEvent.class)
+@JsonDeserialize(as = ImmutableCommitEvent.class)
 public interface CommitEvent extends ReferenceEvent, WithHashBeforeEvent, WithHashAfterEvent {
 
   @Override

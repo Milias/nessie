@@ -18,7 +18,6 @@ package org.projectnessie.catalog.files.gcs;
 import static java.util.concurrent.TimeUnit.MICROSECONDS;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static org.projectnessie.catalog.files.BenchUtils.mockServer;
-import static org.projectnessie.catalog.files.gcs.GcsLocation.gcsLocation;
 import static org.projectnessie.catalog.secrets.TokenSecret.tokenSecret;
 import static org.projectnessie.catalog.secrets.UnsafePlainTextSecretsManager.unsafePlainTextSecretsProvider;
 
@@ -41,7 +40,9 @@ import org.openjdk.jmh.annotations.Threads;
 import org.openjdk.jmh.annotations.Warmup;
 import org.openjdk.jmh.infra.Blackhole;
 import org.projectnessie.catalog.files.config.GcsBucketOptions;
+import org.projectnessie.catalog.files.config.GcsConfig;
 import org.projectnessie.catalog.files.config.GcsOptions;
+import org.projectnessie.catalog.files.config.ImmutableGcsConfig;
 import org.projectnessie.catalog.files.config.ImmutableGcsNamedBucketOptions;
 import org.projectnessie.catalog.files.config.ImmutableGcsOptions;
 import org.projectnessie.catalog.secrets.ResolvingSecretsProvider;
@@ -86,8 +87,10 @@ public class GcsClientResourceBench {
                       .host(server.getGcsBaseUri())
                       .build())
               .build();
+      GcsConfig gcsConfig = ImmutableGcsConfig.builder().build();
 
-      storageSupplier = new GcsStorageSupplier(httpTransportFactory, gcsOptions, secretsProvider);
+      storageSupplier =
+          new GcsStorageSupplier(httpTransportFactory, gcsConfig, gcsOptions, secretsProvider);
     }
 
     @TearDown
@@ -98,8 +101,7 @@ public class GcsClientResourceBench {
 
   @Benchmark
   public void gcsClient(BenchmarkParam param, Blackhole bh) {
-    GcsLocation gcsLocation = gcsLocation("bucket", "key");
-    GcsBucketOptions bucketOptions = param.storageSupplier.bucketOptions(gcsLocation);
+    GcsBucketOptions bucketOptions = param.storageSupplier.bucketOptions(StorageUri.of("gs://key"));
     bh.consume(param.storageSupplier.forLocation(bucketOptions));
   }
 

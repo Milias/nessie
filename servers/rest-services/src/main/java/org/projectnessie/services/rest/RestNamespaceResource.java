@@ -15,6 +15,9 @@
  */
 package org.projectnessie.services.rest;
 
+import static org.projectnessie.services.rest.RestApiContext.NESSIE_V1;
+import static org.projectnessie.versioned.RequestMeta.API_WRITE;
+
 import com.fasterxml.jackson.annotation.JsonView;
 import jakarta.enterprise.context.RequestScoped;
 import jakarta.inject.Inject;
@@ -31,7 +34,12 @@ import org.projectnessie.error.NessieReferenceNotFoundException;
 import org.projectnessie.model.GetNamespacesResponse;
 import org.projectnessie.model.Namespace;
 import org.projectnessie.model.ser.Views;
+import org.projectnessie.services.authz.AccessContext;
+import org.projectnessie.services.authz.Authorizer;
+import org.projectnessie.services.config.ServerConfig;
+import org.projectnessie.services.impl.NamespaceApiImpl;
 import org.projectnessie.services.spi.NamespaceService;
+import org.projectnessie.versioned.VersionStore;
 
 /** REST endpoint for the namespace-API. */
 @RequestScoped
@@ -46,12 +54,14 @@ public class RestNamespaceResource implements HttpNamespaceApi {
 
   // Mandated by CDI 2.0
   public RestNamespaceResource() {
-    this(null);
+    this(null, null, null, null);
   }
 
   @Inject
-  public RestNamespaceResource(NamespaceService namespaceService) {
-    this.namespaceService = namespaceService;
+  public RestNamespaceResource(
+      ServerConfig config, VersionStore store, Authorizer authorizer, AccessContext accessContext) {
+    this.namespaceService =
+        new NamespaceApiImpl(config, store, authorizer, accessContext, NESSIE_V1);
   }
 
   private NamespaceService resource() {
@@ -62,7 +72,7 @@ public class RestNamespaceResource implements HttpNamespaceApi {
   @JsonView(Views.V1.class)
   public Namespace createNamespace(NamespaceParams params, Namespace namespace)
       throws NessieNamespaceAlreadyExistsException, NessieReferenceNotFoundException {
-    return resource().createNamespace(params.getRefName(), namespace);
+    return resource().createNamespace(params.getRefName(), namespace, API_WRITE);
   }
 
   @Override
@@ -99,6 +109,7 @@ public class RestNamespaceResource implements HttpNamespaceApi {
             params.getRefName(),
             params.getNamespace(),
             namespaceUpdate.getPropertyUpdates(),
-            namespaceUpdate.getPropertyRemovals());
+            namespaceUpdate.getPropertyRemovals(),
+            API_WRITE);
   }
 }

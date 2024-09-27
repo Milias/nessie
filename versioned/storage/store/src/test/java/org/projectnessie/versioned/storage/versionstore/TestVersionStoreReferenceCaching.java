@@ -30,11 +30,10 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.projectnessie.model.CommitMeta;
 import org.projectnessie.model.ContentKey;
 import org.projectnessie.model.IcebergTable;
+import org.projectnessie.model.Operation.Put;
 import org.projectnessie.versioned.BranchName;
-import org.projectnessie.versioned.Commit;
 import org.projectnessie.versioned.CommitResult;
 import org.projectnessie.versioned.GetNamedRefsParams;
-import org.projectnessie.versioned.Put;
 import org.projectnessie.versioned.ReferenceInfo;
 import org.projectnessie.versioned.VersionStore;
 import org.projectnessie.versioned.storage.cache.CacheConfig;
@@ -87,7 +86,7 @@ public class TestVersionStoreReferenceCaching {
         store2.getNamedRef(main.getName(), GetNamedRefsParams.DEFAULT);
     soft.assertThat(head2).isEqualTo(head1);
 
-    CommitResult<Commit> committed1 =
+    CommitResult committed1 =
         store1.commit(
             main,
             Optional.of(head1.getHash()),
@@ -105,7 +104,7 @@ public class TestVersionStoreReferenceCaching {
         .isNotEqualTo(head1.getHash());
     soft.assertThat(head2afterCommit1).isEqualTo(head2);
 
-    CommitResult<Commit> committed2 =
+    CommitResult committed2 =
         store2.commit(
             main,
             Optional.of(head2afterCommit1.getHash()),

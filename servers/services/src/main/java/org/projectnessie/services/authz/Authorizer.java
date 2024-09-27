@@ -27,7 +27,8 @@ public interface Authorizer {
    * Start an access-check batch/bulk operation.
    *
    * @param context The context carrying the principal information.
+   * @param apiContext API contextual information
    * @return access checker
    */
-  BatchAccessChecker startAccessCheck(AccessContext context);
+  BatchAccessChecker startAccessCheck(AccessContext context, ApiContext apiContext);
 }
