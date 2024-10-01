@@ -89,6 +89,7 @@ public class ConfigProducers {
   @Singleton
   public HdfsOptions hdfsOptions(LakehouseConfig lakehouseConfig) {
     return lakehouseConfig.hdfs();
+  }
 
   @Produces
   @Singleton

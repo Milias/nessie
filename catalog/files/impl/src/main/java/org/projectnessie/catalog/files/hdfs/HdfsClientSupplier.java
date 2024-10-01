@@ -21,6 +21,8 @@ import org.projectnessie.catalog.files.config.HdfsOptions;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.File;
+
 public final class HdfsClientSupplier {
   private static final Logger LOGGER = LoggerFactory.getLogger(HdfsClientSupplier.class);
 
@@ -34,7 +36,13 @@ public final class HdfsClientSupplier {
     Configuration conf = new Configuration();
 
     if (hdfsOptions.resourcesConfig().isPresent()) {
-      conf.addResource(new Path(hdfsOptions.resourcesConfig().get()));
+      for (var file : hdfsOptions.resourcesConfig().get().split(",")) {
+        if (new File(file).exists()) {
+          conf.addResource(new Path(file));
+        } else {
+          throw new RuntimeException("File does not exist: " + file);
+        }
+      }
     }
 
     return conf;

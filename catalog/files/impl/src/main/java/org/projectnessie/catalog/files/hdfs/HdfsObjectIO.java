@@ -23,6 +23,7 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.function.BiConsumer;
 import java.util.function.BooleanSupplier;
 import org.apache.hadoop.fs.FileSystem;
@@ -62,20 +63,16 @@ public class HdfsObjectIO implements ObjectIO {
   @Override
   public InputStream readObject(StorageUri uri) throws IOException {
     Path path = filePath(uri);
-
-    try (FileSystem fs = fileSystem()) {
-      return new BufferedInputStream(fs.open(path));
-    }
+    FileSystem fs = fileSystem();
+    return new BufferedInputStream(fs.open(path));
   }
 
   @Override
   public OutputStream writeObject(StorageUri uri) throws IOException {
     Path path = filePath(uri);
-
-    try (FileSystem fs = fileSystem()) {
-      fs.mkdirs(path.getParent());
-      return new BufferedOutputStream(fs.create(path));
-    }
+    FileSystem fs = fileSystem();
+    fs.mkdirs(path.getParent());
+    return new BufferedOutputStream(fs.create(path));
   }
 
   @Override
@@ -116,4 +113,10 @@ public class HdfsObjectIO implements ObjectIO {
       StorageUri warehouse,
       Map<String, String> icebergConfig,
       BiConsumer<String, String> properties) {}
+
+  @Override
+  public Optional<String> canResolve(StorageUri uri) {
+    // TODO
+    return Optional.empty();
+  }
 }

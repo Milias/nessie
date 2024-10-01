@@ -33,22 +33,25 @@ dependencies {
   compileOnly(project(":nessie-immutables"))
   annotationProcessor(project(":nessie-immutables", configuration = "processor"))
 
-  // hadoop-common brings Jackson in ancient versions, pulling in the Jackson BOM to avoid that
-  implementation(platform(libs.jackson.bom))
-  implementation(libs.javax.xml.bind.jaxb)
-  implementation(libs.jackson.jaxb.annotations)
-  implementation(libs.hadoop.client) {
-    exclude("javax.servlet.jsp", "jsp-api")
-    exclude("javax.ws.rs", "javax.ws.rs-api")
-    exclude("log4j", "log4j")
-    exclude("org.slf4j", "slf4j-log4j12")
-    exclude("org.slf4j", "slf4j-reload4j")
-    exclude("com.sun.jersey")
-    exclude("org.eclipse.jetty")
-    exclude("org.apache.zookeeper")
-  }
-  // Bump the jabx-impl version 2.2.3-1 via hadoop-common to make it work with Java 17+
-  implementation(libs.jaxb.impl)
+  // hadoop-common/hadoop-hdfs-client brings Jackson in ancient versions, pulling in the Jackson BOM to avoid that
+//  implementation(platform(libs.jackson.bom))
+//  implementation(libs.javax.xml.bind.jaxb)
+//  implementation(libs.jackson.jaxb.annotations)
+//  implementation(libs.hadoop.common) {
+//    exclude("javax.servlet.jsp", "jsp-api")
+//    exclude("javax.ws.rs", "javax.ws.rs-api")
+//    exclude("log4j", "log4j")
+//    exclude("org.slf4j", "slf4j-log4j12")
+//    exclude("org.slf4j", "slf4j-reload4j")
+//    exclude("com.sun.jersey")
+//    exclude("org.eclipse.jetty")
+//    exclude("org.apache.zookeeper")
+//  }
+//  // Bump the jabx-impl version 2.2.3-1 via hadoop-common to make it work with Java 17+
+//  implementation(libs.jaxb.impl)
+  // TODO: this is hacky, see what magic this lib does such that we can
+  // directly depend on the Hadoop libs.
+  implementation("org.apache.camel.quarkus:camel-quarkus-hdfs:3.6.0")
 
   implementation(platform(libs.awssdk.bom))
   implementation("software.amazon.awssdk:s3")

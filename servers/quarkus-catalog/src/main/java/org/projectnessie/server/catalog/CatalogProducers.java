@@ -224,13 +224,12 @@ public class CatalogProducers {
   }
 
   @Produces
-  @Singleton
+  @RequestScoped
   public HdfsClientSupplier hdfsClientSupplier(HdfsOptions hdfsOptions) {
     return new HdfsClientSupplier(hdfsOptions);
   }
 
   @Produces
-  @Singleton
   @RequestScoped
   public ObjectIO objectIO(
       S3ClientSupplier s3ClientSupplier,
@@ -298,7 +297,7 @@ public class CatalogProducers {
     return new ThreadContextTasksAsync(base, threadContext);
 
     // Cannot use VertxTasksAsync :( - but using ThreadContext.contextual*() works fine.
-    //    return new VertxTasksAsync(vertex, systemUTC(), 1L);
+    //    return new VertxTasksAsync(vertx, systemUTC(), 1L);
     //
     // With Vert.x Quarkus runs into this warning quite often:
     //   WARN  [io.qua.ope.run.QuarkusContextStorage] (executor-thread-1) Context in storage not the
