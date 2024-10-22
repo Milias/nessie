@@ -60,6 +60,8 @@ dependencies {
   // Bump the jabx-impl version 2.2.3-1 via hadoop-common to make it work with Java 17+
   implementation(libs.jaxb.impl)
 
+  runtimeOnly(libs.hadoop.hdfs.client)
+
   implementation(platform(libs.awssdk.bom))
   runtimeOnly("software.amazon.awssdk:s3")
   runtimeOnly("software.amazon.awssdk:url-connection-client")

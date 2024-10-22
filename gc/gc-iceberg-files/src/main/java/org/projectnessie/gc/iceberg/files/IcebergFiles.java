@@ -118,6 +118,7 @@ public abstract class IcebergFiles implements FilesLister, FileDeleter, AutoClos
       case "gs":
       case "abfs":
       case "abfss":
+      case "hdfs":
         return true;
       default:
         return false;

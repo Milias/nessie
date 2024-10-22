@@ -224,8 +224,11 @@ public class StorageUri implements Comparable<StorageUri> {
   }
 
   public StorageUri relativize(StorageUri child) {
-    if (!Objects.equals(this.scheme, child.scheme)
-        || !Objects.equals(this.authority, child.authority)) {
+    if (!Objects.equals(this.scheme, child.scheme)) {
+      // HACK - TODO:
+      // Ignore authority for now, on hdfs the child has an authority but `this` (base path) not.
+      // This causes issues in IcebergFiles.listRecursively(), not sure how to solve it properly.
+      //        || !Objects.equals(this.authority, child.authority)) {
       return child;
     }
 
