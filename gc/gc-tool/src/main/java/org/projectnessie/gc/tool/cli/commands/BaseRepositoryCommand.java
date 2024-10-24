@@ -278,6 +278,7 @@ public abstract class BaseRepositoryCommand extends BaseCommand {
   protected IcebergFiles createIcebergFiles(IcebergOptions icebergOptions) {
     Configuration conf = new Configuration();
     icebergOptions.getHadoopConf().forEach(conf::set);
+    icebergOptions.getHadoopConfResources().forEach(item -> conf.addResource(new org.apache.hadoop.fs.Path(item)));
 
     return IcebergFiles.builder()
         .properties(icebergOptions.getIcebergProperties())

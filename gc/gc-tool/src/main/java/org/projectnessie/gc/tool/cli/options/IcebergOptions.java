@@ -15,7 +15,9 @@
  */
 package org.projectnessie.gc.tool.cli.options;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import picocli.CommandLine;
 
@@ -76,11 +78,24 @@ public class IcebergOptions {
       })
   Map<String, String> hadoopConf = new HashMap<>();
 
+
+  @CommandLine.Option(
+    names = {"--hadoop-resources"},
+    split = ",",
+    description = {
+      "Hadoop configuration option, add resource XML files",
+    })
+  List<String> hadoopConfResources = new ArrayList<>();
+
   public Map<String, String> getIcebergProperties() {
     return icebergProperties;
   }
 
   public Map<String, String> getHadoopConf() {
     return hadoopConf;
+  }
+
+  public List<String> getHadoopConfResources() {
+    return hadoopConfResources;
   }
 }
